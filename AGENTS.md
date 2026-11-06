@@ -20,7 +20,7 @@ This repository carries local patches on top of the upstream npm packages `pi-be
 - Do not add commits to Renovate-created PRs. When a Renovate bump needs a rebased patch, open a separate maintainer PR that bumps the exact pin and the lockfile together with the rebased patches.
 - Upstream versions are pinned exactly in `package.json` (`pi-better-goal`, `pi-better-subagents`, `@earendil-works/pi-coding-agent`). Keep them exact.
 - Patch files are package-root-relative (`a/src/index.ts`, not `a/packages/...`) and contain no test files. They are applied with `git apply --directory=<package dir>` from the repository root. Do not run `git apply` inside a package subdirectory of a git working tree: it silently skips the files.
-- Patches are developed and tested in a checkout of the upstream repository, then exported (see `README.md`). Do not copy upstream test files here.
+- Patches are developed and tested in a checkout of the upstream repository, then exported (see `README.md`). Do not copy upstream test files here, and keep `README.md` hunks out of patches.
 - The generated `package.json` and `PATCHES.md` must not contain a release number, date or commit SHA, so unchanged trees can be detected.
 - Never commit secrets or machine-specific paths.
 
