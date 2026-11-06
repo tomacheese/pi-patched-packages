@@ -7,3 +7,4 @@ allowBuilds:
   protobufjs: false
 minimumReleaseAgeExclude:
   - '@book000/*'
+  - pi-better-goal@0.12.1
