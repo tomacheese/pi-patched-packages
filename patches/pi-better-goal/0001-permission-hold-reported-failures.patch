@@ -1,0 +1,270 @@
+diff --git a/README.md b/README.md
+index 5c7741d..9053df4 100644
+--- a/README.md
++++ b/README.md
+@@ -13,7 +13,7 @@ Use `pi-better-goal` when a Pi session should keep an explicit objective visible
+ ## Core Features
+ 
+ - `/goal` runtime for starting, pausing, resuming, completing, and clearing the current objective.
+-- `/goal settings` opens an interactive settings page in the TUI. Select a row with Up/Down and toggle with Space/Enter; changes save immediately, and Escape closes the page. All three controls default to `on`. Automatic continuation controls idle and background-drain wakes; conversational resume controls the agent's Escape-pause resume tool; **Pause on Esc** controls whether editor Escape pauses the active goal. Goal kickoff, `/goal resume`, and `alt+g` remain available with these controls off. For scripts or non-interactive sessions, use `/goal settings auto-continue on|off`, `/goal settings conversational-resume on|off`, and `/goal settings pause-on-escape on|off`; bare `/goal settings` prints the saved values outside the TUI.
++- `/goal settings` opens an interactive settings page in the TUI. Select a row with Up/Down and toggle with Space/Enter; changes save immediately, and Escape closes the page. All four controls default to `on`. The **Pause on worker-reported permissions** option can be disabled for deployments where workers misclassify ordinary failures as permission blockers. OS/policy refusal blockers and incomplete blocker metadata still hold; disabling it does not grant sandbox permissions or clear incident evidence. Automatic continuation controls idle and background-drain wakes; conversational resume controls the agent's Escape-pause resume tool; **Pause on Esc** controls whether editor Escape pauses the active goal. Goal kickoff, `/goal resume`, and `alt+g` remain available with these controls off. For scripts or non-interactive sessions, use `/goal settings auto-continue on|off`, `/goal settings conversational-resume on|off`, and `/goal settings pause-on-escape on|off`, and `/goal settings pause-on-agent-reported-permission on|off`; bare `/goal settings` prints the saved values outside the TUI.
+ - `escape` pauses the active goal by default, and it stays paused while you talk to the agent. With **Pause on Esc** off, observed editor Escape leaves the goal active while preserving native streaming interruption and menu/dialog cancellation. Automatic continuation remains independent. Hosts without terminal/focus inspection and unknown custom editors retain generic abort-to-pause behavior because they cannot identify Escape reliably. With conversational resume enabled, say "go" (the agent then calls `goal_resume`), or use `/goal resume` or `alt+g`. `/goal pause` resumes only through `/goal resume` or `alt+g`. The status line shows the available resume path, and paused goals are never poked. On a macOS terminal without Option-as-Meta, `alt+g` types `©`; use `/goal resume` there.
+ - Background work that finishes while an `ask_user_question` is pending is handed to the agent right after the answer.
+ - A compact goal widget that does not replace Pi's footer.
+@@ -21,12 +21,14 @@ Use `pi-better-goal` when a Pi session should keep an explicit objective visible
+ - A progress-aware follow-up loop with ten identical no-progress retries and linear backoff (60s through 600s by default), followed by a sticky hold recoverable with `/goal resume` or `alt+g`. Conversation, changed callback results, and background drains do not reopen an exhausted hold. Delays saturate at Node's timer limit, and observed background drains reset non-held progress before callback turns can cancel the wake. Pi's network retry policy remains independent.
+ - An observable-progress stall state for active goals.
+ 
++Verified worker recovery reported by the trusted Subagents extension clears only the matching incident-specific permission hold, with the historical record retained. A Goal that was already paused is not automatically resumed; use `/goal resume` after inspecting the evidence.
++
+ ## Settings Storage
+ 
+ Goal preferences are saved only in Pi's global `~/.pi/agent/settings.json` under
+ `piBetterHarness.goal` (or `$PI_CODING_AGENT_DIR/settings.json` when overridden).
+ The payload retains `version: 1` and the boolean `autoContinue`,
+-`conversationalResume`, and `pauseOnEscape` fields; omitted controls default to
++`conversationalResume`, `pauseOnEscape`, and `pauseOnAgentReportedPermission` fields; omitted controls default to
+ `true`. Updates preserve other Pi settings and other `piBetterHarness` keys.
+ 
+ On first read, an existing `extensions/pi-better-goal-preferences.json` in the
+diff --git a/src/index.ts b/src/index.ts
+index 8c52f97..c1a7352 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -28,7 +28,8 @@ import {
+   type GoalEntrySource,
+ } from "./goal-state.js";
+ import { continuationEvidence, type ContinuationEvidence } from "./continuation.js";
+-import { currentPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, reportedPermissionBlockers, reportedPermissionGap, type PermissionHold } from "./permission-hold.js";
++import { permissionBlockerKey } from "./shared-permission-blocker.js";
++import { currentPermissionHold as readPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, permissionResolvedRecord, reportedPermissionBlockers, reportedPermissionGap, reportedPermissionResolutions, type PermissionHold } from "./permission-hold.js";
+ import { observeGoalStall } from "./stall.js";
+ import {
+   flattenObjectiveForRail,
+@@ -117,7 +118,7 @@ const GOAL_ACTIONS: readonly AutocompleteItem[] = [
+   { value: "settings", label: "settings", description: "Inspect or persist goal continuation, conversational resume, and Escape pause controls" },
+ ];
+ 
+-const GOAL_SETTINGS = ["auto-continue", "conversational-resume", "pause-on-escape"] as const;
++const GOAL_SETTINGS = ["auto-continue", "conversational-resume", "pause-on-escape", "pause-on-agent-reported-permission"] as const;
+ 
+ export function goalArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
+   const prefix = argumentPrefix.trimStart().toLowerCase();
+@@ -233,7 +234,7 @@ function formatGoal(
+   goal: GoalSnapshot | null,
+   continuation: ReturnType<typeof currentContinuationState> = null,
+   stall = observeGoalStall(goal, continuation),
+-  preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true },
++  preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true },
+   permissions?: PermissionHold | null,
+ ): string {
+   const settings = formatPreferences(preferences);
+@@ -274,6 +275,7 @@ function formatPreferences(preferences: GoalPreferences): string {
+     `Automatic continuation setting: ${preferences.autoContinue ? "on" : "off"}${WAKE_DISABLED ? " (disabled by environment)" : ""}`,
+     `Conversational resume setting: ${preferences.conversationalResume ? "on" : "off"}`,
+     `Pause on Esc setting: ${preferences.pauseOnEscape ? "on" : "off"}`,
++    `Pause on worker-reported permissions setting: ${preferences.pauseOnAgentReportedPermission ? "on" : "off"}`,
+   ].join("\n");
+ }
+ 
+@@ -326,7 +328,13 @@ export default function (pi: ExtensionAPI): void {
+   let terminalInputIsEditor: (() => boolean) | undefined;
+   let uiPromptDepth = 0;
+   let lastAgentEvidence: ContinuationEvidence | null = null;
+-  let preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true };
++  let preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true };
++  // Keep the audit trail. The opt-out only changes which reports can force a Goal hold.
++  const currentPermissionHold = (ctx: ExtensionContext, goalId: string): PermissionHold => {
++    const hold = readPermissionHold(ctx, goalId);
++    if (preferences.pauseOnAgentReportedPermission || hold.saturated) return hold;
++    return { ...hold, blockers: hold.blockers.filter(blocker => blocker.basis !== "agent-reported") };
++  };
+   /** Background items active when each pending blocking question started, keyed by tool call id. */
+   const pendingQuestions = new Map<string, Map<string, BackgroundWorkItem>>();
+ 
+@@ -496,7 +504,8 @@ export default function (pi: ExtensionAPI): void {
+     }
+     const goal = held ? current : goalWithStatus(current, "active");
+     const permissions = currentPermissionHold(ctx, current.goalId);
+-    if (current.pauseReason === "permission-blocker" && permissions.blockers.length === 0) {
++    if (current.pauseReason === "permission-blocker" && permissions.blockers.length === 0 &&
++        (preferences.pauseOnAgentReportedPermission || readPermissionHold(ctx, current.goalId).blockers.length === 0)) {
+       return { ok: false, message: "Permission hold evidence is unavailable. The goal stays held; inspect the report before replacing this goal explicitly." };
+     }
+     if (permissions.blockers.length > 0) {
+@@ -916,13 +925,14 @@ export default function (pi: ExtensionAPI): void {
+         const [, setting, mode, ...extra] = trimmed.split(/\s+/);
+         if (setting !== undefined && (!GOAL_SETTINGS.includes(setting as typeof GOAL_SETTINGS[number]) ||
+             (mode !== "on" && mode !== "off") || extra.length > 0)) {
+-          notifyGoal(ctx, "Usage: /goal settings [auto-continue|conversational-resume|pause-on-escape on|off]", "warning");
++          notifyGoal(ctx, "Usage: /goal settings [auto-continue|conversational-resume|pause-on-escape|pause-on-agent-reported-permission on|off]", "warning");
+           return;
+         }
+         if (setting !== undefined) {
+           try {
+             const key = setting === "auto-continue" ? "autoContinue"
+-              : setting === "conversational-resume" ? "conversationalResume" : "pauseOnEscape";
++              : setting === "conversational-resume" ? "conversationalResume"
++              : setting === "pause-on-escape" ? "pauseOnEscape" : "pauseOnAgentReportedPermission";
+             await changePreference(ctx, key, mode === "on");
+           } catch (error) {
+             notifyGoal(ctx, error instanceof Error ? error.message : String(error), "error");
+@@ -1367,11 +1377,20 @@ export default function (pi: ExtensionAPI): void {
+   pi.on("tool_result", (event, ctx) => {
+     const goal = getGoal(ctx);
+     if (!goal || (goal.status !== "active" && goal.status !== "paused")) return;
+-    const reports = reportedPermissionBlockers(pi, event.toolName, event.details);
++    const reports = reportedPermissionBlockers(pi, event.toolName, event.details)
++      .filter(blocker => preferences.pauseOnAgentReportedPermission || blocker.basis !== "agent-reported");
+     const incomplete = reportedPermissionGap(pi, event.toolName, event.details);
+-    if (reports.length === 0 && !incomplete) return;
++    const resolutions = reportedPermissionResolutions(pi, event.toolName, event.details);
++    if (reports.length === 0 && !incomplete && resolutions.length === 0) return;
+     let hold = currentPermissionHold(ctx, goal.goalId);
+     let changed = false;
++    for (const resolution of resolutions) {
++      const previous = hold.blockers.find(item => permissionBlockerKey(item) === permissionBlockerKey(resolution.blocker));
++      if (!previous || hold.saturated || hold.recordCount >= MAX_PERMISSION_RECORDS - 2) continue;
++      pi.appendEntry(EXTENSION_NAME, permissionResolvedRecord(goal.goalId, resolution));
++      hold = currentPermissionHold(ctx, goal.goalId);
++      changed = true;
++    }
+     for (const blocker of reports) {
+       const previous = hold.blockers.find((item) => logicalPermissionBlockerKey(item) === logicalPermissionBlockerKey(blocker));
+       if (!hold.retryPending && previous && JSON.stringify(previous) === JSON.stringify(blocker)) continue;
+@@ -1393,6 +1412,14 @@ export default function (pi: ExtensionAPI): void {
+     if (hold.retryPending && hold.recordCount < MAX_PERMISSION_RECORDS) {
+       pi.appendEntry(EXTENSION_NAME, permissionRecord(goal.goalId, "permission-retry-finished"));
+     }
++    if (changed && hold.blockers.length === 0 && !hold.saturated) {
++      // Verified resolution clears the hold, not the user's pause decision.
++      if (goal.status === "paused" && goal.pauseReason === "permission-blocker") {
++        setGoal(goalWithStatus(goal, "paused"), ctx, "runtime");
++        notifyGoal(ctx, "Permission blocker verified resolved. Use /goal resume to continue.");
++      }
++      return;
++    }
+     if (!changed && goal.status === "paused" && goal.pauseReason === "permission-blocker") return;
+     setGoal(goalWithStatus(goal, "paused", undefined, "permission-blocker"), ctx, "runtime");
+     notifyGoal(ctx, "Goal held for a permission blocker. /goal resume or alt+g releases one same-scope retry.", "warning");
+diff --git a/src/permission-hold.ts b/src/permission-hold.ts
+index 39a3c18..fef757f 100644
+--- a/src/permission-hold.ts
++++ b/src/permission-hold.ts
+@@ -9,7 +9,8 @@ export const MAX_PERMISSION_RECORDS = 128;
+ 
+ export type PermissionRecord =
+   | { version: 1; kind: "permission-hold"; goalId: string; blocker: PermissionBlocker; at: number }
+-  | { version: 1; kind: "permission-release" | "permission-retry-finished" | "permission-gap"; goalId: string; at: number };
++  | { version: 1; kind: "permission-release" | "permission-retry-finished" | "permission-gap"; goalId: string; at: number }
++  | { version: 1; kind: "permission-resolved"; goalId: string; blocker: PermissionBlocker; resolution: "recovered" | "superseded"; resolvedAt: number; at: number };
+ 
+ export interface PermissionHold {
+   blockers: PermissionBlocker[];
+@@ -37,9 +38,11 @@ export function currentPermissionHold(ctx: ExtensionContext, goalId: string): Pe
+     const data = entry.data as Partial<PermissionRecord>;
+     // Only attributable authority records can make this goal's retry scope incomplete.
+     if (data.goalId !== goalId || (data.kind !== "permission-hold" && data.kind !== "permission-release" &&
+-        data.kind !== "permission-retry-finished" && data.kind !== "permission-gap")) continue;
++        data.kind !== "permission-retry-finished" && data.kind !== "permission-gap" && data.kind !== "permission-resolved")) continue;
+     if (data.version !== 1 || typeof data.at !== "number" || !Number.isFinite(data.at) ||
+-        (data.kind === "permission-hold" && !isPermissionBlocker(data.blocker))) {
++        ((data.kind === "permission-hold" || data.kind === "permission-resolved") && !isPermissionBlocker(data.blocker)) ||
++        (data.kind === "permission-resolved" && (data.resolution !== "recovered" && data.resolution !== "superseded" ||
++          typeof data.resolvedAt !== "number" || !Number.isFinite(data.resolvedAt)))) {
+       saturated = true;
+       retryPending = false;
+       recordCount += 1;
+@@ -50,6 +53,12 @@ export function currentPermissionHold(ctx: ExtensionContext, goalId: string): Pe
+       if (blockers.has(key) || blockers.size < MAX_PERMISSION_BLOCKERS) blockers.set(key, compactBlocker(data.blocker));
+       else saturated = true;
+       retryPending = false;
++    } else if (data.kind === "permission-resolved" && isPermissionBlocker(data.blocker)) {
++      const key = logicalPermissionBlockerKey(data.blocker);
++      if (blockers.has(key) && permissionBlockerKey(blockers.get(key)!) === permissionBlockerKey(compactBlocker(data.blocker))) {
++        blockers.delete(key);
++        retryPending = false;
++      }
+     } else if (data.kind === "permission-release" && blockers.size > 0) {
+       retryPending = !saturated;
+     } else if (data.kind === "permission-retry-finished") {
+@@ -124,6 +133,30 @@ export function reportedPermissionBlockers(pi: ExtensionAPI, toolName: string, d
+   return reports.map(compactBlocker);
+ }
+ 
++export interface VerifiedPermissionResolution {
++  blocker: PermissionBlocker;
++  resolution: "recovered" | "superseded";
++  resolvedAt: number;
++}
++
++/** Only the registered worker tool producer may supply recovery evidence. */
++export function reportedPermissionResolutions(pi: ExtensionAPI, toolName: string, details: unknown): VerifiedPermissionResolution[] {
++  if (!isParentBlockerProducer(pi, toolName) || !details || typeof details !== "object") return [];
++  const records = (details as { permissionResolutions?: unknown }).permissionResolutions;
++  if (!Array.isArray(records) || records.length > MAX_PERMISSION_BLOCKERS) return [];
++  if (!records.every((entry) => entry && typeof entry === "object" && !Array.isArray(entry) &&
++    Reflect.ownKeys(entry).every(k => k === "blocker" || k === "resolution" || k === "resolvedAt") &&
++    isPermissionBlocker(entry.blocker) && entry.blocker.context === "worker" &&
++    (entry.resolution === "recovered" || entry.resolution === "superseded") &&
++    typeof entry.resolvedAt === "number" && Number.isFinite(entry.resolvedAt) && entry.resolvedAt > 0)) return [];
++  return records.map(entry => ({ blocker: compactBlocker(entry.blocker), resolution: entry.resolution, resolvedAt: entry.resolvedAt }));
++}
++
++export function permissionResolvedRecord(goalId: string, resolution: VerifiedPermissionResolution): PermissionRecord {
++  return { version: 1, kind: "permission-resolved", goalId, blocker: compactBlocker(resolution.blocker),
++    resolution: resolution.resolution, resolvedAt: resolution.resolvedAt, at: Math.floor(Date.now() / 1000) };
++}
++
+ export function reportedPermissionGap(pi: ExtensionAPI, toolName: string, details: unknown): boolean {
+   if (!isParentBlockerProducer(pi, toolName) || !details || typeof details !== "object") return false;
+   const omitted = (details as { permissionBlockersOmitted?: unknown }).permissionBlockersOmitted;
+diff --git a/src/preferences.ts b/src/preferences.ts
+index fcec2d5..5bd2ee6 100644
+--- a/src/preferences.ts
++++ b/src/preferences.ts
+@@ -11,6 +11,7 @@ export interface GoalPreferences {
+   autoContinue: boolean;
+   conversationalResume: boolean;
+   pauseOnEscape: boolean;
++  pauseOnAgentReportedPermission: boolean;
+ }
+ 
+ export interface GoalPreferenceSeams extends HarnessSettingsSeams {}
+@@ -39,19 +40,21 @@ export function readGoalPreferences(seams: GoalPreferenceSeams = {}): GoalPrefer
+ 
+ function parseGoalPreferences(parsed: unknown, path: string): GoalPreferences {
+   if (parsed === undefined) {
+-    return { autoContinue: true, conversationalResume: true, pauseOnEscape: true };
++    return { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true };
+   }
+   const value = parsed as Partial<GoalPreferences> & { version?: unknown } | null;
+   if (value?.version !== 1 ||
+       (value.autoContinue !== undefined && typeof value.autoContinue !== "boolean") ||
+       (value.conversationalResume !== undefined && typeof value.conversationalResume !== "boolean") ||
+-      (value.pauseOnEscape !== undefined && typeof value.pauseOnEscape !== "boolean")) {
+-    throw new Error(`Goal preferences at ${path} must contain version 1 and boolean autoContinue/conversationalResume/pauseOnEscape settings.`);
++      (value.pauseOnEscape !== undefined && typeof value.pauseOnEscape !== "boolean") ||
++      (value.pauseOnAgentReportedPermission !== undefined && typeof value.pauseOnAgentReportedPermission !== "boolean")) {
++    throw new Error(`Goal preferences at ${path} must contain version 1 and boolean autoContinue/conversationalResume/pauseOnEscape/pauseOnAgentReportedPermission settings.`);
+   }
+   return {
+     autoContinue: value.autoContinue ?? true,
+     conversationalResume: value.conversationalResume ?? true,
+     pauseOnEscape: value.pauseOnEscape ?? true,
++    pauseOnAgentReportedPermission: value.pauseOnAgentReportedPermission ?? true,
+   };
+ }
+ 
+diff --git a/src/settings-page.ts b/src/settings-page.ts
+index 99a26d1..b06a210 100644
+--- a/src/settings-page.ts
++++ b/src/settings-page.ts
+@@ -6,6 +6,7 @@ const rows: { key: keyof GoalPreferences; label: string }[] = [
+   { key: "autoContinue", label: "Automatic continuation" },
+   { key: "conversationalResume", label: "Conversational resume" },
+   { key: "pauseOnEscape", label: "Pause on Esc" },
++  { key: "pauseOnAgentReportedPermission", label: "Pause on worker-reported permissions" },
+ ];
+ 
+ export function createGoalSettingsPage(
