@@ -1,0 +1,9 @@
+allowBuilds:
+  esbuild: true
+  '@parcel/watcher': true
+  unrs-resolver: true
+  # Install scripts of the pi CLI dependencies are not needed for the smoke test.
+  '@google/genai': false
+  protobufjs: false
+minimumReleaseAgeExclude:
+  - '@book000/*'

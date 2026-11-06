@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "isolatedModules": true,
+    "lib": ["ESNext", "esnext.AsyncIterable", "DOM"],
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "removeComments": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "checkJs": true,
+    "incremental": true,
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictBindCallApply": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "experimentalDecorators": true,
+    "newLine": "LF",
+    "types": ["node", "jest", "jest-expect-message"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*"]
+}
