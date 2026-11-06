@@ -1,0 +1,15 @@
+diff --git a/dist/runtime/notification-runtime.js b/dist/runtime/notification-runtime.js
+index 16c57a3..82606f0 100644
+--- a/dist/runtime/notification-runtime.js
++++ b/dist/runtime/notification-runtime.js
+@@ -221,6 +221,10 @@ export function createNotificationRuntime({ pi, getHasPendingMessages, getIsIdle
+             return { ...notification, message: formatMonitorState(notification) };
+         if (notification.deliveryGroup === "monitor-terminal")
+             return { ...notification, message: formatMonitorTerminal(notification) };
++        // A wake that waited behind an agent turn says how late it is, so the model does not act on stale state.
++        const waited = Date.now() - notification.timestamp;
++        if (typeof notification.message === "string" && waited > 60_000)
++            return { ...notification, message: `${notification.message}\n(Fired ${ageLabel(notification.timestamp)}; check current state before acting.)` };
+         return notification;
+     }
+     function deliveryDetails(notification) {

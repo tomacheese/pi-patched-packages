@@ -17,6 +17,7 @@ export const PACKAGES = [
   'pi-auto-continue',
   'pi-better-goal',
   'pi-better-subagents',
+  'pi-loop-monitor',
 ] as const
 
 /** Error raised when the build cannot produce a valid tree. */

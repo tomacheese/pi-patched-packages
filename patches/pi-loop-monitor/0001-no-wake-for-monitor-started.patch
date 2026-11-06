@@ -1,0 +1,14 @@
+diff --git a/dist/index.js b/dist/index.js
+index c3e02df..2735f83 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -190,8 +190,7 @@ export default function (pi) {
+         flushPendingNotifications: notificationRuntime.flushPendingNotifications, retryReadOnlyRetirements, finalizeReadOnlyRetirements, recoverReadOnlyRetirements, shutdownMonitors: () => monitorManager.shutdown(), isContextCurrent: isCurrentExtensionContext,
+         emitLoopExpired: (entry, disposition, reason, generation) => emitExpired(entry, disposition, "session_recovery", reason, generation),
+     });
+-    pi.events.on("monitor:started", async (event) => { const data = event; if (data.monitorId && data.command)
+-        await notificationRuntime.queueOrDeliverMonitorStarted({ monitorId: data.monitorId, command: data.command, description: data.description, timestamp: data.timestamp ?? Date.now(), sessionGeneration }); });
++    // The MonitorCreate result already reports the start; a wake for it only made the model call MonitorList.
+     pi.events.on("monitor:finished", (event) => { const id = event.monitorId; if (!id)
+         return; notificationRuntime.discardMonitorStarted(id); notificationRuntime.discardMonitorSignals(id); });
+     registerLoopTools({ pi, getStore: () => store, getTriggerSystem: () => triggerSystem, getScheduler: () => scheduler, getMonitorManager: () => monitorManager, updateWidget: () => widget.update(), isReadOnlyGuardAvailable: () => isReadOnlyWakeGuardAvailable(pi), onDynamicLoopActivated: onLoopFire, onLoopStopped: dismissLoopNotifications });

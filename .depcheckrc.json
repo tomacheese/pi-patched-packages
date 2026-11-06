@@ -6,6 +6,7 @@
     "eslint-plugin-promise",
     "@earendil-works/pi-coding-agent",
     "pi-auto-continue",
+    "pi-loop-monitor",
     "pi-better-goal",
     "pi-better-subagents"
   ]

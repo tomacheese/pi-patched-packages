@@ -42,6 +42,7 @@
     "pi-auto-continue": "0.4.1",
     "pi-better-goal": "0.12.1",
     "pi-better-subagents": "0.27.2",
+    "pi-loop-monitor": "0.2.8",
     "prettier": "3.9.10",
     "run-z": "2.1.0",
     "ts-jest": "29.4.15",
