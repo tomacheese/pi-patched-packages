@@ -19,8 +19,6 @@ Use `pi-better-subagents` when you want Pi to launch independent agent work with
 - Live background-work navigator for active runs.
 - Harness-owned run timing: every run gets a no-progress wake (10 min), while wall-clock soft deadlines and hard ceilings are opt-in so productive agents are not stopped solely for taking a long time. Configure per spawn with `deadline_minutes`, `grace_minutes`, `max_minutes`, `stuck_minutes`, or globally in `config.json` / `PI_SUBAGENT_*_MINUTES`. See [usage notes](docs/usage.md#run-timing-deadline-ceiling-stuck).
 
-Verified recoveries of previously reported worker permission incidents are included in bounded `subagent_result` / `subagent_output` metadata as `permissionResolutions`, allowing Goal to retire only an exact matching hold. A fresh worker does not assert recovery for a different run.
-
 ## Install
 
 ```sh
