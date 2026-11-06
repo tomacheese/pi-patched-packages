@@ -3,7 +3,22 @@ import { createHash } from "node:crypto";
 export interface ContinuationEvidence {
   signature: string;
   summary: string;
+  /** The turn only waited: no tool calls, or only read-only status lookups. Its text and results vary and prove nothing. */
+  idleOnly: boolean;
 }
+
+/** Read-only status lookups; a turn that calls only these did no work. */
+const READ_ONLY_IDLE_TOOLS = new Set([
+  "LoopList",
+  "MonitorList",
+  "get_goal",
+  "bg_task_list",
+  "subagent_list",
+  "get_background_activity",
+]);
+
+/** Signature and summary shared by every idle-only turn, so waiting repeats instead of looking like new work. */
+export const IDLE_ONLY_EVIDENCE = { signature: "idle-only", summary: "idle-only" } as const;
 
 interface MessageLike {
   role?: unknown;
@@ -92,11 +107,21 @@ export function continuationEvidence(messages: readonly unknown[]): Continuation
     }
   }
 
+  // A run that ended in a provider error is a failed attempt, not a deliberate wait: it must keep
+  // counting as "no observable action" so a persistent failure still reaches the retry limit.
+  const errored = messages.some((candidate) => isRecord(candidate) && candidate.role === "assistant" && candidate.stopReason === "error");
+  const idleOnly = !errored && toolNames.length > 0 && toolNames.every((name) => READ_ONLY_IDLE_TOOLS.has(name)) &&
+    !records.some((record) => isRecord(record) && record.role === "toolResult" && record.isError === true);
+  if (idleOnly) {
+    return { ...IDLE_ONLY_EVIDENCE, idleOnly: true };
+  }
+
   const payload = canonicalJson(records.length > 0 ? records : [{ role: "empty" }]);
   const signature = createHash("sha256").update(payload).digest("hex");
   const distinctTools = [...new Set(toolNames)];
   return {
     signature,
     summary: distinctTools.length > 0 ? distinctTools.join(", ") : "no observable action",
+    idleOnly: false,
   };
 }

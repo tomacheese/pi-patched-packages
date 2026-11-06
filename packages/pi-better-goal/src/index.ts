@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { commandAvailable, commandInvocation, resolveGoalCommand } from "./command-binding.js";
 import { goalPreferencesPath, readGoalPreferences, writeGoalPreference, type GoalPreferences } from "./preferences.js";
 import { createGoalSettingsPage } from "./settings-page.js";
+import { OPERATION_RESUME_ADMISSION, operationOwnerMatches, type OperationResumeRequest } from "./operation-admission.js";
 
 import {
   collectActivitySnapshot,
@@ -27,9 +28,11 @@ import {
   validateTokenBudget,
   type GoalEntrySource,
 } from "./goal-state.js";
-import { continuationEvidence, type ContinuationEvidence } from "./continuation.js";
+import { continuationEvidence, IDLE_ONLY_EVIDENCE, type ContinuationEvidence } from "./continuation.js";
 import { permissionBlockerKey } from "./shared-permission-blocker.js";
 import { currentPermissionHold as readPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, permissionResolvedRecord, reportedPermissionBlockers, reportedPermissionGap, reportedPermissionResolutions, type PermissionHold } from "./permission-hold.js";
+import { publishGoalGuidance } from "./prompt.js";
+import { isAuthFailureMessage, providerLimitResetMs } from "./provider-limit.js";
 import { observeGoalStall } from "./stall.js";
 import {
   flattenObjectiveForRail,
@@ -42,7 +45,7 @@ import { createRenderScheduler } from "./shared-render-scheduler.js";
 import { initializeNavigatorPanels, setNavigatorPanel } from "./shared-navigator-panels.js";
 import { collectSubagentActivity } from "./subagents.js";
 import { currentWorkflowOwner, skillCommandName, workflowEntry, workflowOwnerFromSkill, WORKFLOW_ENTRY_TYPE } from "./workflow.js";
-import { completionGate, pauseGate, schedulerWaitUntil } from "./workflow-gates.js";
+import { completionGate, pauseGate, schedulerWaitUntil, operationResumeSchedulerGate } from "./workflow-gates.js";
 import { workflowRehydrateMessage, WORKFLOW_REHYDRATE_MESSAGE_TYPE } from "./rehydrate.js";
 import { requestTaskContext } from "./task-context.js";
 import {
@@ -158,6 +161,29 @@ export function idleContinuationDelay(noProgressRetries: number, baseMs = IDLE_C
   return Math.min(MAX_TIMER_DELAY_MS, baseMs * (1 + Math.max(0, noProgressRetries)));
 }
 
+/** Objectives that ask for work without an end: the model may not declare them complete. */
+const STANDING_GOAL = /無期限|定期的|継続的に|常時監視|\b(?:indefinite(?:ly)?|forever|continuously monitor\w*|monitor\w* (?:continuously|indefinitely)|periodic(?:ally)? (?:check|monitor|audit)\w*|ongoing monitor\w*)\b/i;
+
+/** How long a no-progress hold lasts before the goal gets one more chance without a human. */
+const HOLD_RELEASE_DELAY_MS = 30 * 60_000;
+
+/** Longest wait between continuations while the goal does nothing but wait. */
+const IDLE_ONLY_MAX_DELAY_MS = 30 * 60_000;
+
+/**
+ * Exponential backoff for a goal that keeps doing nothing but waiting (status lookups, "monitoring
+ * continues"): the base period, doubled with every identical idle turn, capped at 30 minutes.
+ * @param idleTurns Identical idle-only turns in a row before this one
+ * @param baseMs First wait
+ */
+export function idleOnlyDelay(idleTurns: number, baseMs = IDLE_CONTINUATION_DELAY_MS): number {
+  const doublings = Math.min(Math.max(0, idleTurns), 30);
+  return Math.min(MAX_TIMER_DELAY_MS, Math.max(baseMs, Math.min(IDLE_ONLY_MAX_DELAY_MS, baseMs * 2 ** doublings)));
+}
+
+/** Slack after a hinted reset time so the first retry does not land just before it. */
+const PROVIDER_LIMIT_RESET_MARGIN_MS = 60_000;
+
 /** Longest wait between continuations while the provider keeps reporting a limit. */
 const PROVIDER_LIMIT_MAX_DELAY_MS = 30 * 60_000;
 
@@ -231,6 +257,18 @@ function endedWithProviderLimit(messages: readonly unknown[]): boolean {
     return candidate.stopReason === "error" && isProviderLimitMessage(candidate.errorMessage);
   }
   return false;
+}
+
+/** The errorMessage of the final assistant message when the run ended with stopReason "error". */
+function lastAssistantError(messages: readonly unknown[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") continue;
+    const candidate = message as { role?: unknown; stopReason?: unknown; errorMessage?: unknown };
+    if (candidate.role !== "assistant") continue;
+    return candidate.stopReason === "error" && typeof candidate.errorMessage === "string" ? candidate.errorMessage : undefined;
+  }
+  return undefined;
 }
 
 function activeItemsByKey(snapshot: ActivitySnapshot): Map<string, BackgroundWorkItem> {
@@ -362,6 +400,7 @@ export default function (pi: ExtensionAPI): void {
 
   let currentCtx: ExtensionContext | undefined;
   let executionGeneration = 0;
+  let operationAdmissionRevision = 0;
   let agentGeneration = -1;
   let turnGeneration = 0;
   let escapeAbortSuppression: { session: number; turn: number; execution: number } | undefined;
@@ -388,6 +427,13 @@ export default function (pi: ExtensionAPI): void {
   let lastAgentEvidence: ContinuationEvidence | null = null;
   // Consecutive runs that ended on a provider limit (in memory only); any other run resets it.
   let providerLimitStreak = 0;
+  /** Epoch ms before which a limited provider is known not to answer (from a reset hint); 0 when unknown. */
+  let providerLimitResetAt = 0;
+  /** The last run ended because the login was rejected; consumed when the run settles. */
+  let authFailurePending = false;
+  let holdReleaseTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Goals whose no-progress hold was already released once on a timer. */
+  const holdReleasedGoals = new Set<string>();
   let preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true };
   // Keep the audit trail. The opt-out only changes which reports can force a Goal hold.
   const currentPermissionHold = (ctx: ExtensionContext, goalId: string): PermissionHold => {
@@ -460,6 +506,8 @@ export default function (pi: ExtensionAPI): void {
     executionGeneration += 1;
     lastAgentEvidence = null;
     providerLimitStreak = 0;
+    providerLimitResetAt = 0;
+    authFailurePending = false;
     const previous = getGoal(ctx);
     const wasVisible = previous !== null && isGoalClockVisible(previous);
     pi.appendEntry(EXTENSION_NAME, goalSetEntry(goal, source));
@@ -487,6 +535,8 @@ export default function (pi: ExtensionAPI): void {
     executionGeneration += 1;
     lastAgentEvidence = null;
     providerLimitStreak = 0;
+    providerLimitResetAt = 0;
+    authFailurePending = false;
     const current = getGoal(ctx);
     const wasVisible = current !== null && isGoalClockVisible(current);
     // Clearing pauses a Harness-bound outcome; it never deletes or completes it.
@@ -678,10 +728,42 @@ export default function (pi: ExtensionAPI): void {
       idleContinuationTimer = undefined;
       idleContinuationSignature = "";
       void sendIdleContinuationAfterAudit(goal.goalId, ctx, kind, snapshot);
-    }, waitDelayMs ?? (kind === "continuation" && providerLimitStreak > 0
-      ? providerLimitDelay(providerLimitStreak)
-      : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0)));
+    }, waitDelayMs ?? (providerLimitStreak > 0
+      ? Math.min(MAX_TIMER_DELAY_MS, Math.max(
+        kind === "continuation" ? providerLimitDelay(providerLimitStreak) : IDLE_CONTINUATION_DELAY_MS,
+        providerLimitResetAt - Date.now() + PROVIDER_LIMIT_RESET_MARGIN_MS,
+      ))
+      : kind === "continuation" && currentContinuationState(ctx, goal.goalId)?.lastEvidenceSummary === IDLE_ONLY_EVIDENCE.summary
+        ? idleOnlyDelay(currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0)
+        : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0)));
     idleContinuationTimer.unref?.();
+  };
+
+  /**
+   * After a no-progress hold lasts HOLD_RELEASE_DELAY_MS, give the goal one more attempt (once per goal):
+   * the next identical outcome holds it again immediately. Holds with a reason (a rejected login, a
+   * permission blocker) are never released here.
+   */
+  const scheduleHoldRelease = (goal: GoalSnapshot, ctx: ExtensionContext): void => {
+    if (WAKE_DISABLED || !preferences.autoContinue || holdReleasedGoals.has(goal.goalId)) return;
+    if (holdReleaseTimer) clearTimeout(holdReleaseTimer);
+    holdReleaseTimer = setTimeout(() => {
+      holdReleaseTimer = undefined;
+      const current = getGoal(ctx);
+      const state = current ? currentContinuationState(ctx, current.goalId) : null;
+      if (!current || current.goalId !== goal.goalId || !isPokeable(current) || !state?.blocked || state.holdReason !== undefined) return;
+      if (currentPermissionHold(ctx, current.goalId).blockers.length > 0) return;
+      holdReleasedGoals.add(current.goalId);
+      appendContinuationState({
+        ...state,
+        blocked: false,
+        noProgressRetries: Math.max(0, MAX_NO_PROGRESS_RETRIES - 1),
+        updatedAt: Math.floor(Date.now() / 1000),
+      });
+      refreshGoalWidget?.();
+      scheduleIdleContinuation(current, ctx, "continuation");
+    }, HOLD_RELEASE_DELAY_MS);
+    holdReleaseTimer.unref?.();
   };
 
   const sendIdleContinuationAfterAudit = async (
@@ -924,6 +1006,51 @@ export default function (pi: ExtensionAPI): void {
     );
   };
 
+  const unsubscribeOperationAdmission = pi.events.on(OPERATION_RESUME_ADMISSION, (value) => {
+    const request = value as Partial<OperationResumeRequest> | undefined;
+    if (request?.version !== 1 || !request.owner || typeof request.reply !== "function") return;
+    const ctx = currentCtx;
+    const revision = executionGeneration;
+    const preferencesRevision = operationAdmissionRevision;
+    const reply = request.reply;
+    const held = (reason: string) => reply({ allowed: false, reason, revision: executionGeneration });
+    if (!operationOwnerMatches(ctx, request.owner) || !ctx) { held("Owning parent session or branch is inactive"); return; }
+    const goal = getGoal(ctx);
+    if ((request.owner.goalId ?? null) !== (goal?.goalId ?? null)) { held("Owning Goal is no longer current"); return; }
+    if (goal && !preferences.autoContinue) { held("Goal automatic continuation is disabled"); return; }
+    if (goal && !isPokeable(goal)) { held("Goal is not active"); return; }
+    if (goal && currentPermissionHold(ctx, goal.goalId).blockers.length) { held("Goal has an active permission hold"); return; }
+    if (goal && currentContinuationState(ctx, goal.goalId)?.blocked) { held("Goal continuation requires human resume"); return; }
+    if (goal && !boundCommandReady(goal, ctx)) { held("Bound workflow is not ready"); return; }
+    const workflow = getWorkflow(ctx);
+    void (workflow ? operationResumeSchedulerGate(ctx.sessionManager.getBranch(), workflow) : Promise.resolve({ ok: true as const, waitUntil: undefined })).then((gate) => {
+      if (ctx !== currentCtx || revision !== executionGeneration || preferencesRevision !== operationAdmissionRevision || !operationOwnerMatches(currentCtx, request.owner!)) {
+        held("Parent execution changed during resume admission"); return;
+      }
+      const latest = getGoal(ctx);
+      if ((request.owner!.goalId ?? null) !== (latest?.goalId ?? null)) { held("Owning Goal changed during resume admission"); return; }
+      if (latest && !preferences.autoContinue) { held("Goal automatic continuation is disabled"); return; }
+      if (latest && (!isPokeable(latest) || currentPermissionHold(ctx, latest.goalId).blockers.length || currentContinuationState(ctx, latest.goalId)?.blocked)) {
+        held("Goal became held during resume admission"); return;
+      }
+      if (!gate.ok) { held(gate.reason); return; }
+      if (gate.waitUntil && gate.waitUntil > Date.now()) { held("Workflow scheduler is waiting"); return; }
+      // An in-process capability lets the dispatcher validate this admission
+      // after its last await and immediately before releasing execution.
+      const isCurrent = (): boolean => {
+        if (ctx !== currentCtx || revision !== executionGeneration || preferencesRevision !== operationAdmissionRevision
+          || !operationOwnerMatches(currentCtx, request.owner!)) return false;
+        const active = getGoal(ctx);
+        if ((request.owner!.goalId ?? null) !== (active?.goalId ?? null)) return false;
+        if (JSON.stringify(getWorkflow(ctx)) !== JSON.stringify(workflow)) return false;
+        return !active || (preferences.autoContinue && isPokeable(active)
+          && !currentPermissionHold(ctx, active.goalId).blockers.length
+          && !currentContinuationState(ctx, active.goalId)?.blocked && boundCommandReady(active, ctx));
+      };
+      reply({ allowed: true, revision, isCurrent });
+    }, () => held("Workflow admission evidence is unavailable"));
+  });
+
   pi.events.on(EVENT_REGISTER_PROVIDER, (provider) => {
     const candidate = provider as Partial<BackgroundActivityProvider> | undefined;
     if (!candidate || typeof candidate.id !== "string" || typeof candidate.getActivity !== "function") {
@@ -942,6 +1069,7 @@ export default function (pi: ExtensionAPI): void {
   const changePreference = async (ctx: ExtensionCommandContext, key: keyof GoalPreferences, enabled: boolean): Promise<void> => {
     const previous = preferences;
     preferences = writeGoalPreference(key, enabled);
+    operationAdmissionRevision += 1;
     if (previous.autoContinue !== preferences.autoContinue) clearIdleContinuation();
     syncResumeTool(getGoal(ctx));
     if (!previous.autoContinue && preferences.autoContinue) {
@@ -1092,8 +1220,8 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool({
     name: "update_goal",
     label: "Update Goal",
-    description: "Mark the current pi-better-goal objective complete after a completion audit.",
-    promptSnippet: "Mark the current Codex-style goal complete after verification.",
+    description: "Mark the current pi-better-goal objective complete after a completion audit. A standing goal (indefinite, periodic or ongoing monitoring) is never complete through this tool; only the user completes it.",
+    promptSnippet: "Mark the current Codex-style goal complete after verification; never for a standing (indefinite or periodic) goal.",
     parameters: Type.Object({
       status: Type.String({ description: "Only 'complete' is accepted." }),
     }),
@@ -1116,6 +1244,13 @@ export default function (pi: ExtensionAPI): void {
         return {
           content: [{ type: "text", text: "Goal already complete." }],
           details: { ok: true, goal: current },
+        };
+      }
+      // A goal that asks for ongoing or periodic work has no finish line the model can verify.
+      if (STANDING_GOAL.test(current.objective)) {
+        return {
+          content: [{ type: "text", text: "This is a standing goal (indefinite, periodic or ongoing). Leave it active; only the user can complete it with /goal complete." }],
+          details: { ok: false, goal: current },
         };
       }
       const gated = boundWorkflow(current, ctx);
@@ -1267,6 +1402,8 @@ export default function (pi: ExtensionAPI): void {
     backgroundDrainTracker = null;
     lastAgentEvidence = null;
     providerLimitStreak = 0;
+    providerLimitResetAt = 0;
+    authFailurePending = false;
     collecting = false;
     collectionPending = false;
     currentCtx = ctx;
@@ -1379,12 +1516,12 @@ export default function (pi: ExtensionAPI): void {
         (permissions.blockers.length === 0 ? "\nBlocker evidence is unavailable. Stay held; do not invent a retry scope." : "") : "";
     // A held goal overrides workflow ownership without invoking or invalidating that workflow.
     if (permissionPrompt && goal?.status === "paused") {
-      return { systemPrompt: `${event.systemPrompt}\n\n${permissionPrompt}` };
+      return publishGoalGuidance(event, permissionPrompt);
     }
     const pausedInstruction = permissionPrompt || (goal?.status === "paused" && (goal.pauseReason === "interrupt" || goal.pauseReason === "handback")
       ? pausedGoalPrompt(goal, preferences.conversationalResume, !harnessPresent) : "");
     if (!isPokeable(goal) && !owner) {
-      return pausedInstruction ? { systemPrompt: `${event.systemPrompt}\n\n${pausedInstruction}` } : undefined;
+      return publishGoalGuidance(event, pausedInstruction);
     }
 
     const questionInstruction = snapshot.backgroundRunning
@@ -1398,31 +1535,28 @@ export default function (pi: ExtensionAPI): void {
       if (!workflowAvailable(owner)) {
         if (isPokeable(goal)) setGoal(goalWithStatus(goal, "paused"), ctx, "runtime");
         recordWorkflow(null);
-        return { systemPrompt: `${event.systemPrompt}\n\nWorkflow ${owner.name} is no longer a registered, valid skill. Stop work and ask the user to reinvoke the skill.` };
+        return publishGoalGuidance(event, `Workflow ${owner.name} is no longer a registered, valid skill. Stop work and ask the user to reinvoke the skill.`);
       }
       let instructions: string;
       try {
         instructions = readFileSync(owner.path, "utf8");
       } catch {
         if (isPokeable(goal)) setGoal(goalWithStatus(goal, "paused"), ctx, "runtime");
-        return { systemPrompt: `${event.systemPrompt}\n\nWorkflow ${owner.name} is unavailable. Stop work and ask the user to restore or reinvoke the skill.` };
+        return publishGoalGuidance(event, `Workflow ${owner.name} is unavailable. Stop work and ask the user to restore or reinvoke the skill.`);
       }
-      return {
-        systemPrompt: `${event.systemPrompt}\n\n` +
-          (pausedInstruction
-            ? `${pausedInstruction}\n` + (permissionPrompt
-              ? "These permission constraints override the workflow instructions below.\n\n"
-              : "While the goal is paused, this overrides the workflow instructions below: do not advance the workflow until the goal is resumed.\n\n")
-            : "") +
-          `Active workflow: ${owner.name} (${owner.path}). Its task plan owns planning and the parent is a coordinator, not a product-code implementer. Follow the workflow instructions below, including on resumed turns:\n\n${instructions}` +
-          (isPokeable(goal)
-            ? harnessPresent
-              ? "\n\nComplete the goal only after the workflow completion audit."
-              : `\n\nActive objective: ${goal.objective}. Complete it only after the workflow completion audit.`
-            : "") +
-          (questionInstruction ? `\n\n${questionInstruction.trim()}` : "") +
-          (heldInstruction ? `\n\n${heldInstruction}` : ""),
-      };
+      return publishGoalGuidance(
+        event,
+        pausedInstruction &&
+          `${pausedInstruction}\n` + (permissionPrompt
+            ? "These permission constraints override the workflow instructions below.\n\n"
+            : "While the goal is paused, this overrides the workflow instructions below: do not advance the workflow until the goal is resumed.\n\n"),
+        `Active workflow: ${owner.name} (${owner.path}). Its task plan owns planning and the parent is a coordinator, not a product-code implementer. Follow the workflow instructions below, including on resumed turns:\n\n${instructions}`,
+        isPokeable(goal) && (harnessPresent
+          ? "Complete the goal only after the workflow completion audit."
+          : `Active objective: ${goal.objective}. Complete it only after the workflow completion audit.`),
+        questionInstruction && questionInstruction.trim(),
+        heldInstruction,
+      );
     }
 
     if (!isPokeable(goal)) return;
@@ -1432,18 +1566,19 @@ export default function (pi: ExtensionAPI): void {
     if (harnessPresent) {
       // Harness owns the outcome text. Retain only the Goal-specific guidance
       // that the Outcome & Todo prompt cannot replace.
-      const retained = [heldInstruction, backgroundInstruction.trim(), questionInstruction.trim(), permissionPrompt]
-        .filter((part) => part.length > 0);
-      return retained.length > 0
-        ? { systemPrompt: `${event.systemPrompt}\n\n${retained.join("\n\n")}` }
-        : undefined;
+      return publishGoalGuidance(
+        event,
+        heldInstruction,
+        backgroundInstruction.trim(),
+        questionInstruction.trim(),
+        permissionPrompt,
+      );
     }
-    return {
-      systemPrompt:
-        `${event.systemPrompt}\n\n` +
-        `Pi Better Goal active objective: ${goal.objective}. ${heldInstruction || "Keep working through clear low-risk next steps, and mark complete only after an evidence-backed completion audit."}${backgroundInstruction}${questionInstruction}` +
-        (permissionPrompt ? `\n\n${permissionPrompt}` : ""),
-    };
+    return publishGoalGuidance(
+      event,
+      `Pi Better Goal active objective: ${goal.objective}. ${heldInstruction || "Keep working through clear low-risk next steps, and mark complete only after an evidence-backed completion audit."}${backgroundInstruction}${questionInstruction}`,
+      permissionPrompt,
+    );
   });
 
   pi.on("agent_start", async (_event, ctx) => {
@@ -1481,7 +1616,14 @@ export default function (pi: ExtensionAPI): void {
     // records no evidence, so the no-progress counter is neither advanced nor reset.
     const limited = currentRun && endedWithProviderLimit(event.messages);
     if (currentRun) providerLimitStreak = limited ? providerLimitStreak + 1 : 0;
-    lastAgentEvidence = currentRun && !limited ? continuationEvidence(event.messages) : null;
+    if (currentRun && !limited) providerLimitResetAt = 0;
+    if (limited) {
+      const resetMs = providerLimitResetMs(lastAssistantError(event.messages));
+      if (resetMs !== undefined) providerLimitResetAt = Date.now() + resetMs;
+    }
+    // A rejected login produces no work either: hold the goal at settle instead of retrying.
+    authFailurePending = currentRun && isAuthFailureMessage(lastAssistantError(event.messages));
+    lastAgentEvidence = currentRun && !limited && !authFailurePending ? continuationEvidence(event.messages) : null;
     // Only an observed editor Escape with pause disabled exempts this abort.
     // Unknown interrupt sources retain the safety fallback on every host.
     if (wasTurnAborted(event.messages) && !escapeAbortIsSuppressed()) {
@@ -1608,6 +1750,22 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
     }
+    if (authFailurePending) {
+      authFailurePending = false;
+      const state = currentContinuationState(ctx, goal.goalId) ?? createContinuationState(goal.goalId);
+      appendContinuationState({
+        ...state,
+        lastEvidenceSummary: "authentication failed - re-login required",
+        blocked: true,
+        holdReason: "auth",
+        updatedAt: Math.floor(Date.now() / 1000),
+      });
+      refreshGoalWidget?.();
+      if (ctx.hasUI) {
+        ctx.ui.notify("Goal automatic continuation is held: the provider rejected the login. Log in again, then use /goal resume.", "warning");
+      }
+      return;
+    }
     const evidence = lastAgentEvidence;
     if (!evidence) {
       scheduleIdleContinuation(goal, ctx, "continuation", snapshot);
@@ -1617,7 +1775,8 @@ export default function (pi: ExtensionAPI): void {
     if (previous.blocked) return;
     const repeated = previous.lastEvidenceSignature === evidence.signature;
     const noProgressRetries = repeated ? previous.noProgressRetries + 1 : 0;
-    const blocked = repeated && noProgressRetries >= MAX_NO_PROGRESS_RETRIES;
+    // Waiting is not stuck: an idle-only streak backs off (see idleOnlyDelay) but never holds the goal.
+    const blocked = repeated && noProgressRetries >= MAX_NO_PROGRESS_RETRIES && !evidence.idleOnly;
     const now = Date.now();
     appendContinuationState({
       goalId: goal.goalId,
@@ -1631,6 +1790,7 @@ export default function (pi: ExtensionAPI): void {
       updatedAt: Math.floor(now / 1000),
     });
     if (blocked) {
+      scheduleHoldRelease(goal, ctx);
       refreshGoalWidget?.();
       if (ctx.hasUI) {
         ctx.ui.notify(
@@ -1668,6 +1828,7 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     if (typeof unsubscribeSettingsRequest === "function") unsubscribeSettingsRequest();
+    if (typeof unsubscribeOperationAdmission === "function") unsubscribeOperationAdmission();
 
     executionGeneration += 1;
     sessionGeneration += 1;

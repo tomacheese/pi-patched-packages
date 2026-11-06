@@ -36,6 +36,8 @@ export interface ContinuationState {
   lastProgressAt?: number;
   noProgressRetries: number;
   blocked: boolean;
+  /** Why the hold started when it is not the no-progress retry limit (for example "auth"). */
+  holdReason?: string;
   updatedAt: number;
 }
 
@@ -95,6 +97,7 @@ function isContinuationState(value: unknown): value is ContinuationState {
     Number.isInteger(candidate.noProgressRetries) &&
     candidate.noProgressRetries >= 0 &&
     typeof candidate.blocked === "boolean" &&
+    (candidate.holdReason === undefined || typeof candidate.holdReason === "string") &&
     typeof candidate.updatedAt === "number"
   );
 }

@@ -16,13 +16,23 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 
 ## pi-better-goal
 
-- upstream: 0.11.0
-- patch: 0001-permission-hold-reported-failures.patch sha256:d71127d197ccd77e691e742ae791a3e5fbedc4170c752bee6d310d726a87d184
-- patch: 0002-recover-plain-language-goals.patch sha256:6ed7a7885851bc4b97106142d28709be20af3ec9c430b61bd4125ae58e84dc75
-- patch: 0003-usage-limit-not-no-progress.patch sha256:9590f4c6c6f6950220185e9c18a5ea54b357cbeedada7e3af3a5347eace02fcd
-- file: src/index.ts sha256:67681b24398ec1446c62739ffc72c3c73e19c92bfd363aebb1d434e0959c91e4
+- upstream: 0.12.1
+- patch: 0001-permission-hold-reported-failures.patch sha256:14a3cb7fd3c9d275c1e081adb4845122f55c3f853a5e16424fb9fa947bf6fa2e
+- patch: 0002-recover-plain-language-goals.patch sha256:1bbd4fd7b5e41cf940d0baec49b634161c3a4c253ff998e2ec1c91ed8f4f47f3
+- patch: 0003-usage-limit-not-no-progress.patch sha256:e468c6fd41acff5724f41537175dd1df22cb542a2a4cf8e1ee2729724abdacc0
+- patch: 0004-usage-limit-reset-hint.patch sha256:79a07e7c79a7519bb212e3af43e6915993d4612d4f1dafa7d5f4ae970dbd8b46
+- patch: 0005-hold-on-authentication-failure.patch sha256:5af238872651ca950479fb95438814ef212c13e05f2b80571babffabe199c097
+- patch: 0006-idle-only-turns-back-off.patch sha256:148887c3dec2651b12e4d516183b87ff56bf86f7cd4896934ffa63c3ec605771
+- patch: 0007-release-stale-no-progress-hold.patch sha256:ab5348bb2582e4d6c1d727e6ac61feb36739eb98244ba0297a9218b5011c8134
+- patch: 0008-standing-goal-not-completed-by-tool.patch sha256:02ad9f64254ff4296ec870b465d2e5ec3a9c9ec491d32c9a61154cc8238734d3
+- patch: 0009-tighten-auth-and-standing-goal-matchers.patch sha256:e980c0e29b2a2afb7a056d91f8e216a619650cb56e985ef2eab14fe79c8620c6
+- patch: 0010-keep-text-only-turns-and-hold-semantics.patch sha256:c112114791d0249266000ff26f033087bad96156ca781750659e27042c836003
+- file: src/continuation.ts sha256:faee944ff470f05471ad734b5516ba34d2ee8110313a77d909b2f7fe0ae82ddc
+- file: src/goal-state.ts sha256:69d370797e3604f70846f423ccb47657ab5139758ec8d89c6ee874b3e15581ab
+- file: src/index.ts sha256:10ebeb673fe0e32036b2d760bb877f13447563ec24db13cb6ee3555037e96af2
 - file: src/permission-hold.ts sha256:d9207f226edad7481731e65b5fbda6e20b559a08d7e0f1f00ccf209981bb02f0
 - file: src/preferences.ts sha256:b7db1e79d89613627b71a3cdbe22af5a07c260a973edafec32c340158b35dc5b
+- file: src/provider-limit.ts sha256:5d748fce2cde64c203f303f3b54a704d2548fa2090056a336351cf4c77dd1a03
 - file: src/settings-page.ts sha256:4775147ad61d08e76f0863bded85d5d8310a39b5a10d33ccdb22de6b52a83697
 
 ## pi-better-subagents
