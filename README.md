@@ -50,9 +50,11 @@ pnpm test
 Patches are developed and tested in a checkout of the upstream repository (the upstream test suites are not part of the npm packages), then exported with paths relative to the package root:
 
 ```bash
-git -C <upstream checkout> diff --relative=packages/<package> <base> <target> -- packages/<package>/src packages/<package>/README.md \
+git -C <upstream checkout> diff --relative=packages/<package> <base> <target> -- packages/<package>/src \
   > patches/<package>/NNNN-<slug>.patch
 ```
+
+Do not include `README.md` in a patch: upstream documentation changes would make every upstream bump conflict.
 
 See `AGENTS.md` for the full workflow.
 
