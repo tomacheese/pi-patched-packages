@@ -1,4 +1,4 @@
-# Publishes the patched packages to the `dist` branch, an `r<N>` tag and a
+# Publishes the patched packages to the `dist` branch, a `v<major>.<minor>.<patch>` tag and a
 # GitHub Release after a change reaches master. master itself is never written.
 
 name: release

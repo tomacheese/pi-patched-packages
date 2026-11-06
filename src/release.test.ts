@@ -5,7 +5,8 @@ import path from 'node:path'
 import type { BuiltPackage } from './build-dist'
 import {
   hashTree,
-  nextReleaseNumber,
+  nextVersion,
+  parsePackageStates,
   renderCommitMessage,
   runRelease,
   treesEqual,
@@ -40,15 +41,73 @@ const BUILT: BuiltPackage[] = [
 ]
 
 describe('pure helpers', () => {
-  it('computes the next release number from r<N> tags only', () => {
-    expect(nextReleaseNumber([])).toBe(1)
-    expect(nextReleaseNumber(['v1', 'release', 'r', 'r1x'])).toBe(1)
-    expect(nextReleaseNumber(['r1', 'r10', 'r2', 'v99'])).toBe(11)
+  const md = (goal: string, patches: string[], agents = '0.18.0'): string =>
+    [
+      '## pi-better-goal',
+      '',
+      `- upstream: ${goal}`,
+      ...patches.map((p) => `- patch: ${p} sha256:${'a'.repeat(64)}`),
+      '',
+      '## pi-better-subagents',
+      '',
+      `- upstream: ${agents}`,
+      '',
+    ].join('\n')
+  const base = md('0.8.4', ['0001.patch'])
+
+  it('parses upstream versions and patch names', () => {
+    expect(parsePackageStates(base).get('pi-better-goal')).toStrictEqual({
+      version: '0.8.4',
+      patches: ['0001.patch'],
+    })
+  })
+
+  it('starts at 0.1.0 without a previous release or version tag', () => {
+    expect(nextVersion([], undefined, base)).toBe('0.1.0')
+    expect(nextVersion(['v0.1.0'], undefined, base)).toBe('0.1.0')
+    expect(nextVersion(['r5', 'latest'], base, base)).toBe('0.1.0')
+  })
+
+  it('bumps the patch for upstream patch bumps and patch content changes', () => {
+    const tags = ['v0.2.0', 'v0.10.1', 'v0.9.0', 'r99']
+    expect(nextVersion(tags, base, md('0.8.5', ['0001.patch']))).toBe('0.10.2')
+    expect(nextVersion(tags, base, base)).toBe('0.10.2')
+  })
+
+  it('bumps the minor in 0.x for upstream minor bumps and patch file changes', () => {
+    const tags = ['v0.3.0']
+    expect(nextVersion(tags, base, md('0.9.0', ['0001.patch']))).toBe('0.4.0')
+    expect(
+      nextVersion(tags, base, md('0.8.4', ['0001.patch', '0002.patch']))
+    ).toBe('0.4.0')
+    expect(nextVersion(tags, base, md('0.8.4', []))).toBe('0.4.0')
+  })
+
+  it('treats an upstream major bump or a package change as breaking', () => {
+    expect(nextVersion(['v0.3.0'], base, md('1.0.0', ['0001.patch']))).toBe(
+      '0.4.0'
+    )
+    expect(
+      nextVersion(
+        ['v0.3.0'],
+        base,
+        '## pi-better-goal\n\n- upstream: 0.8.4\n- patch: 0001.patch sha256:x'
+      )
+    ).toBe('0.4.0')
+    expect(nextVersion(['v1.2.3'], base, md('1.0.0', ['0001.patch']))).toBe(
+      '2.0.0'
+    )
+    expect(nextVersion(['v1.2.3'], base, md('0.9.0', ['0001.patch']))).toBe(
+      '1.3.0'
+    )
+    expect(nextVersion(['v1.2.3'], base, md('0.8.5', ['0001.patch']))).toBe(
+      '1.2.4'
+    )
   })
 
   it('renders the commit message with versions, patches and source', () => {
-    expect(renderCommitMessage(3, BUILT, 'abc123')).toBe(
-      'release r3: goal 0.8.4 (0001-x.patch), subagents 0.18.0 (no patches), source abc123'
+    expect(renderCommitMessage('v0.3.0', BUILT, 'abc123')).toBe(
+      'release v0.3.0: goal 0.8.4 (0001-x.patch), subagents 0.18.0 (no patches), source abc123'
     )
   })
 
@@ -130,31 +189,31 @@ describe('runRelease against a bare remote', () => {
     await fs.rm(tmp, { recursive: true, force: true })
   })
 
-  it('creates an orphan dist and r1 on the first run, without touching master', async () => {
+  it('creates an orphan dist and v0.1.0 on the first run, without touching master', async () => {
     const outcome = await run()
-    expect(outcome).toStrictEqual({ kind: 'released', tag: 'r1' })
+    expect(outcome).toStrictEqual({ kind: 'released', tag: 'v0.1.0' })
     expect(distFiles().toSorted((a, b) => a.localeCompare(b))).toStrictEqual([
       'package.json',
       'PATCHES.md',
     ])
     expect(git(remote, 'rev-parse', 'master')).toBe(sourceSha)
-    expect(git(remote, 'rev-parse', 'r1^{commit}')).toBe(
+    expect(git(remote, 'rev-parse', 'v0.1.0^{commit}')).toBe(
       git(remote, 'rev-parse', 'dist')
     )
     expect(git(remote, 'log', '-1', '--format=%s', 'dist')).toContain(
-      `release r1: goal 0.8.4 (0001-x.patch)`
+      `release v0.1.0: goal 0.8.4 (0001-x.patch)`
     )
     expect(git(remote, 'log', '-1', '--format=%an', 'dist')).toBe(
       'github-actions[bot]'
     )
     expect(git(remote, 'rev-list', '--count', 'dist')).toBe('1')
-    expect(created).toStrictEqual(['r1'])
+    expect(created).toStrictEqual(['v0.1.0'])
   })
 
   it('ignores unrelated branches whose name ends with /dist', async () => {
     git(work, 'push', '-q', 'origin', 'master:refs/heads/foo/dist')
     const outcome = await run()
-    expect(outcome).toStrictEqual({ kind: 'released', tag: 'r1' })
+    expect(outcome).toStrictEqual({ kind: 'released', tag: 'v0.1.0' })
     expect(git(remote, 'rev-parse', '--verify', 'refs/heads/dist')).not.toBe('')
   })
 
@@ -162,10 +221,10 @@ describe('runRelease against a bare remote', () => {
     await run()
     const head = git(remote, 'rev-parse', 'dist')
     const outcome = await run()
-    expect(outcome).toStrictEqual({ kind: 'unchanged', tag: 'r1' })
+    expect(outcome).toStrictEqual({ kind: 'unchanged', tag: 'v0.1.0' })
     expect(git(remote, 'rev-parse', 'dist')).toBe(head)
-    expect(git(remote, 'tag', '--list')).toBe('r1')
-    expect(created).toStrictEqual(['r1'])
+    expect(git(remote, 'tag', '--list')).toBe('v0.1.0')
+    expect(created).toStrictEqual(['v0.1.0'])
   })
 
   it('repairs a missing GitHub Release for the dist head tag', async () => {
@@ -173,16 +232,16 @@ describe('runRelease against a bare remote', () => {
     existing.clear()
     created = []
     const outcome = await run()
-    expect(outcome).toStrictEqual({ kind: 'unchanged', tag: 'r1' })
-    expect(created).toStrictEqual(['r1'])
+    expect(outcome).toStrictEqual({ kind: 'unchanged', tag: 'v0.1.0' })
+    expect(created).toStrictEqual(['v0.1.0'])
   })
 
-  it('creates r2 as a fast-forward when the tree changed', async () => {
+  it('creates a patch release as a fast-forward when the tree changed', async () => {
     await run()
     const first = git(remote, 'rev-parse', 'dist')
     await write(path.join(distDir, 'package.json'), '{"v":2}')
     const outcome = await run()
-    expect(outcome).toStrictEqual({ kind: 'released', tag: 'r2' })
+    expect(outcome).toStrictEqual({ kind: 'released', tag: 'v0.1.1' })
     const second = git(remote, 'rev-parse', 'dist')
     expect(second).not.toBe(first)
     expect(git(remote, 'merge-base', '--is-ancestor', first, second)).toBe('')
@@ -191,7 +250,7 @@ describe('runRelease against a bare remote', () => {
       git(remote, 'tag', '--list')
         .split('\n')
         .toSorted((a, b) => a.localeCompare(b))
-    ).toStrictEqual(['r1', 'r2'])
+    ).toStrictEqual(['v0.1.0', 'v0.1.1'])
   })
 
   it('does nothing when the checked-out commit is not the head of master', async () => {
@@ -205,7 +264,7 @@ describe('runRelease against a bare remote', () => {
     const outcome = await run(sourceSha)
     expect(outcome).toStrictEqual({ kind: 'superseded' })
     expect(git(remote, 'rev-parse', 'dist')).toBe(head)
-    expect(git(remote, 'tag', '--list')).toBe('r1')
+    expect(git(remote, 'tag', '--list')).toBe('v0.1.0')
     expect(created).toStrictEqual([])
   })
 })
