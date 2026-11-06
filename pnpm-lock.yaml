@@ -208,6 +208,9 @@ importers:
       pi-better-subagents:
         specifier: 0.27.2
         version: 0.27.2(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)
+      pi-codex-native:
+        specifier: 0.3.13
+        version: 0.3.13(@earendil-works/pi-agent-core@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1))(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
       pi-loop-monitor:
         specifier: 0.2.8
         version: 0.2.8(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
@@ -2882,6 +2885,20 @@ packages:
       '@earendil-works/pi-coding-agent': '>=0.82.1'
       '@earendil-works/pi-tui': '*'
 
+  pi-codex-native@0.3.13:
+    resolution: {integrity: sha512-+S7Kifwp03P/eyeMFU7yGl2e97dOuU4nROWlw0Xuw5NaD3LtROHgHSJ2C7B4wKGRByuk5lku6SxBMQOL4lCQlA==}
+    peerDependencies:
+      '@earendil-works/pi-agent-core': '>=1.0.0'
+      '@earendil-works/pi-ai': '>=1.0.0'
+      '@earendil-works/pi-coding-agent': '>=1.0.0'
+      '@earendil-works/pi-tui': '>=1.0.0'
+      typebox: '*'
+    bundledDependencies:
+      - '@luan.sh/pi-libactions'
+      - '@luan.sh/pi-libtui'
+      - '@luan.sh/pi-xsettings'
+      - '@luan.sh/pi-developer-messages'
+
   pi-loop-monitor@0.2.8:
     resolution: {integrity: sha512-GcnfBgGNL9hvA1W+AXRfX1/Z3l/6OtTg0zFXW66fyshY5kpGn7bcCwcFUaUDLumhB6nmtWOOK2hAe0Qq//4w4w==}
     engines: {node: '>=22.19.0'}
@@ -2949,6 +2966,10 @@ packages:
     peerDependenciesMeta:
       kerberos:
         optional: true
+
+  proxy-from-env@2.1.0:
+    resolution: {integrity: sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==}
+    engines: {node: '>=10'}
 
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
@@ -6670,6 +6691,17 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.1
 
+  pi-codex-native@0.3.13(@earendil-works/pi-agent-core@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1))(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27):
+    dependencies:
+      '@earendil-works/pi-agent-core': 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1)
+      '@earendil-works/pi-ai': 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1)
+      '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
+      '@earendil-works/pi-tui': 1.5.0
+      partial-json: 0.1.7
+      proxy-from-env: 2.1.0
+      typebox: 1.3.27
+      undici: 8.12.3
+
   pi-loop-monitor@0.2.8(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27):
     dependencies:
       '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
@@ -6724,6 +6756,8 @@ snapshots:
       long: 5.3.2
 
   proxy-agent-negotiate@1.1.0: {}
+
+  proxy-from-env@2.1.0: {}
 
   punycode@2.3.1: {}
 

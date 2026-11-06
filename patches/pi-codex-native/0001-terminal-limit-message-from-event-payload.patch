@@ -1,0 +1,58 @@
+diff --git a/src/provider/stream-events.ts b/src/provider/stream-events.ts
+index 06a8815..f164cba 100644
+--- a/src/provider/stream-events.ts
++++ b/src/provider/stream-events.ts
+@@ -8,7 +8,7 @@ import {
+ 	DEFAULT_OVERLOAD_RETRY_DELAY_MS,
+ 	DEFAULT_RATE_LIMIT_RECOVERY_BUDGET_MS,
+ } from "./constants.ts";
+-import { isRetryableStreamStatus, isTerminalRateLimitError } from "./errors.ts";
++import { formatCodexUsageLimitError, isRetryableStreamStatus, isTerminalRateLimitError } from "./errors.ts";
+ import { applyServiceTierPricing, resolveCodexServiceTier } from "./usage.ts";
+ import type { OpenAICodexStreamOptions, ServiceTier, StreamEventShape } from "./types.ts";
+ 
+@@ -186,6 +186,26 @@ function codexApiRetryDelayMs(code: string | undefined, message: string | undefi
+ 	return Number.isFinite(delayMs) ? delayMs : undefined;
+ }
+ 
++function describeTerminalLimit(
++	code: string | undefined,
++	message: string | undefined,
++	event: StreamEventShape,
++): string | undefined {
++	if (!/usage[_ ]limit|usage_not_included/i.test(`${code ?? ""} ${message ?? ""}`)) return undefined;
++	const response = isRecord(event.response) ? event.response : undefined;
++	const nested = isRecord(event["error"]) ? event["error"] : isRecord(response?.["error"]) ? response["error"] : undefined;
++	const source = { ...event, ...nested };
++	return formatCodexUsageLimitError({
++		error: {
++			code,
++			message,
++			plan_type: source["plan_type"],
++			resets_at: source["resets_at"],
++			resets_in_seconds: source["resets_in_seconds"],
++		},
++	});
++}
++
+ function extractCodexEventError(event: StreamEventShape): { code?: string | undefined; message?: string | undefined } {
+ 	const nested = isRecord(event["error"]) ? event["error"] : undefined;
+ 	return {
+@@ -219,7 +239,7 @@ export async function* mapCodexEvents(
+ 			const { code, message } = extractCodexEventError(event);
+ 			const status = eventStatus(event);
+ 			const retryDelayMs = codexApiRetryDelayMs(code, message);
+-			throw new CodexApiError(`Codex error: ${message || code || JSON.stringify(event)}`, {
++			throw new CodexApiError(describeTerminalLimit(code, message, event) ?? `Codex error: ${message || code || JSON.stringify(event)}`, {
+ 				code,
+ 				payload: event,
+ 				retryable: isRetryableCodexApiFailure(code, message, status, true),
+@@ -239,7 +259,7 @@ export async function* mapCodexEvents(
+ 			const message = typeof error?.["message"] === "string" ? error["message"] : undefined;
+ 			const status = eventStatus(event);
+ 			const retryDelayMs = codexApiRetryDelayMs(code, message);
+-			throw new CodexApiError(message || "Codex response failed", {
++			throw new CodexApiError(describeTerminalLimit(code, message, event) ?? (message || "Codex response failed"), {
+ 				code,
+ 				payload: event,
+ 				retryable: isRetryableCodexApiFailure(code, message, status, true),

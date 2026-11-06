@@ -7,6 +7,7 @@
     "@earendil-works/pi-coding-agent",
     "pi-auto-continue",
     "pi-loop-monitor",
+    "pi-codex-native",
     "pi-better-goal",
     "pi-better-subagents"
   ]

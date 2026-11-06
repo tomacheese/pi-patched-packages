@@ -116,10 +116,19 @@ describe('pure helpers', () => {
     try {
       await write(path.join(tmp, 'a', 'x.txt'), 'x')
       await write(path.join(tmp, 'node_modules', 'm', 'i.js'), 'ignored')
+      await write(
+        path.join(tmp, 'packages', 'p', 'node_modules', 'b', 'i.js'),
+        'bundled'
+      )
       await write(path.join(tmp, 'package-lock.json'), 'ignored')
       await write(path.join(tmp, '.git', 'HEAD'), 'ignored')
       const first = await hashTree(tmp)
-      expect(first.keys().toArray()).toStrictEqual(['a/x.txt'])
+      expect(
+        first
+          .keys()
+          .toArray()
+          .toSorted((a, b) => a.localeCompare(b))
+      ).toStrictEqual(['a/x.txt', 'packages/p/node_modules/b/i.js'])
       expect(treesEqual(first, await hashTree(tmp))).toBe(true)
       await write(path.join(tmp, 'a', 'x.txt'), 'changed')
       expect(treesEqual(first, await hashTree(tmp))).toBe(false)
@@ -174,6 +183,10 @@ describe('runRelease against a bare remote', () => {
     await write(path.join(distDir, 'PATCHES.md'), 'notes')
     await write(path.join(distDir, 'node_modules', 'm', 'i.js'), 'ignored')
     await write(path.join(distDir, 'package-lock.json'), 'ignored')
+    await write(
+      path.join(distDir, 'packages', 'p', 'node_modules', 'b', 'i.js'),
+      'bundled'
+    )
     created = []
     existing = new Set()
     client = {
@@ -194,6 +207,7 @@ describe('runRelease against a bare remote', () => {
     expect(outcome).toStrictEqual({ kind: 'released', tag: 'v0.1.0' })
     expect(distFiles().toSorted((a, b) => a.localeCompare(b))).toStrictEqual([
       'package.json',
+      'packages/p/node_modules/b/i.js',
       'PATCHES.md',
     ])
     expect(git(remote, 'rev-parse', 'master')).toBe(sourceSha)
