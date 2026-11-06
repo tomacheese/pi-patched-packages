@@ -60,7 +60,7 @@ async function fetchCommands(
   const child = spawn(piBin, ['--mode', 'rpc', '--no-session', '--offline'], {
     cwd,
     env,
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'inherit'],
   })
   try {
     return await new Promise<RpcCommand[]>((resolve, reject) => {
@@ -82,13 +82,13 @@ async function fetchCommands(
           id?: string
           success?: boolean
           data?: { commands?: RpcCommand[] }
-        }
+        } | null
         try {
           message = JSON.parse(line) as typeof message
         } catch {
           return
         }
-        if (!(message.type === 'response' && message.id === '1')) {
+        if (message?.type !== 'response' || message.id !== '1') {
           return
         }
 

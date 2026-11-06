@@ -151,6 +151,13 @@ describe('runRelease against a bare remote', () => {
     expect(created).toStrictEqual(['r1'])
   })
 
+  it('ignores unrelated branches whose name ends with /dist', async () => {
+    git(work, 'push', '-q', 'origin', 'master:refs/heads/foo/dist')
+    const outcome = await run()
+    expect(outcome).toStrictEqual({ kind: 'released', tag: 'r1' })
+    expect(git(remote, 'rev-parse', '--verify', 'refs/heads/dist')).not.toBe('')
+  })
+
   it('creates nothing when the tree is unchanged', async () => {
     await run()
     const head = git(remote, 'rev-parse', 'dist')

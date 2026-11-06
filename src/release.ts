@@ -1,7 +1,7 @@
 /**
  * Publishing of the `dist` branch, the `r<N>` tag and the GitHub Release.
  *
- * Rules (see the spec): a run publishes only when it is built from the current
+ * Rules: a run publishes only when it is built from the current
  * head of `master`; `dist` is replaced by the full build output and only grows
  * (no force push); the commit and its tag are pushed in one atomic push; the
  * GitHub Release for the tag on the `dist` head is created whenever it is
@@ -44,7 +44,7 @@ export interface ReleaseClient {
 export interface ReleaseOptions {
   /** Repository checkout (the pushed `master` commit). */
   repoRoot: string
-  /** Built tree to publish (without `node_modules` and lock files being relevant). */
+  /** Built tree to publish; names in `EXCLUDED_NAMES` are ignored. */
   distDir: string
   /** Commit that was built. */
   sourceSha: string
@@ -93,7 +93,7 @@ export function renderCommitMessage(
 }
 
 /**
- * Hashes every file of a tree, skipping `node_modules`, lock files and `.git`.
+ * Hashes every file of a tree, skipping the names in `EXCLUDED_NAMES`.
  * @param root Tree root
  * @returns Map of POSIX relative path to SHA-256
  */
@@ -194,7 +194,8 @@ export async function runRelease(
 
   git(repoRoot, ['fetch', '--tags', '--force', remote])
   const hasDist =
-    git(repoRoot, ['ls-remote', '--heads', remote, 'dist']).length > 0
+    git(repoRoot, ['ls-remote', '--heads', remote, 'refs/heads/dist']).length >
+    0
   if (hasDist) {
     git(repoRoot, [
       'fetch',
@@ -272,6 +273,11 @@ export async function runRelease(
       git(repoRoot, ['worktree', 'remove', '--force', worktree])
     } catch {
       // The worktree may not have been created.
+    }
+    try {
+      git(repoRoot, ['branch', '-D', 'dist-release'])
+    } catch {
+      // The orphan branch only exists after a first release attempt.
     }
     await fs.rm(work, { recursive: true, force: true })
   }

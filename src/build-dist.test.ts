@@ -28,6 +28,7 @@ function lineReplacePatch(file: string, from: string, to: string): string {
   ].join('\n')
 }
 
+/** Temporary source and output directories used by the build tests. */
 interface Fixture {
   root: string
   outDir: string
@@ -192,8 +193,10 @@ describe('buildDist', () => {
       path.join(fixture.root, 'patches', 'pkg-a', '0001-x.patch'),
       lineReplacePatch('src/index.ts', 'pkg-a-line', 'patched')
     )
+    /** Reads every file under a directory into a path to content map. */
     const readTree = async (dir: string): Promise<Record<string, string>> => {
       const out: Record<string, string> = {}
+      /** Walks one directory. */
       const walk = async (current: string): Promise<void> => {
         const entries = await fs.readdir(current, { withFileTypes: true })
         for (const entry of entries) {

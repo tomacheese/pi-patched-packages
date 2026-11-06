@@ -74,7 +74,7 @@ export interface PatchEffect {
   sha256: string | null
 }
 
-/** Returns the SHA-256 (hex) of a file or buffer. */
+/** Returns the SHA-256 (hex) of a file. */
 async function sha256File(file: string): Promise<string> {
   return createHash('sha256')
     .update(await fs.readFile(file))
@@ -162,6 +162,7 @@ function parsePatchedPaths(
   const result: { path: string; removed: boolean }[] = []
   let currentPath: string | undefined
   let removed = false
+  /** Appends the entry collected so far to the result. */
   const flush = (): void => {
     if (currentPath !== undefined) result.push({ path: currentPath, removed })
   }
