@@ -1,45 +1,46 @@
 diff --git a/incident-model.ts b/incident-model.ts
-index 75b61fe..8305186 100644
+index e3b53c0..f8bfb03 100644
 --- a/incident-model.ts
 +++ b/incident-model.ts
-@@ -87,7 +87,9 @@ export interface IncidentModel {
-     /** operationId → operation identity. */
+@@ -88,6 +88,10 @@ export interface IncidentModel {
      operationIds: Map<string, string>;
      /** Current unresolved incident per operation, for exact retry recovery. */
--    failed: Map<string, { id: string; sequence: number }>;
-+    failed: Map<string, { id: string; sequence: number; ids: string[] }>;
+     failed: Map<string, { id: string; sequence: number }>;
 +    /** Successful file edits so far: a bash failure repeated after an edit is a new attempt, not a stuck retry. */
 +    epoch: number;
++    /** Every incident filed for a command (base operation → incident and the group it was filed under), resolved together on recovery. */
++    groups: Map<string, { id: string; operation: string }[]>;
      /** Incident → last failure sequence, for ordering evidence. */
      incidentSequence: Map<string, number>;
      /** Disposition requests resolved at their start position (parent) or execute time (child). */
-@@ -100,7 +102,7 @@ export interface IncidentModel {
+@@ -100,7 +104,7 @@ export interface IncidentModel {
   */
  export function newIncidentModel(structuredIntent = false, runId?: string): IncidentModel {
      return { structuredIntent, ...(runId ? { runId } : {}), sequence: 0, open: new Map(), finished: new Map(), attemptIds: new Map(), namedAttempts: new Set(), operationIds: new Map(),
 -        failed: new Map(), incidentSequence: new Map(), pendingDispositions: new Map() };
-+        failed: new Map(), epoch: 0, incidentSequence: new Map(), pendingDispositions: new Map() };
++        failed: new Map(), epoch: 0, groups: new Map(), incidentSequence: new Map(), pendingDispositions: new Map() };
  }
  export interface IncidentSink {
      /** Reduce/journal ordinary observations; returns the resulting state. */
-@@ -301,6 +303,10 @@ function bashFailureSummary(row: any, fallback: string): string {
-     return `bash exit ${code}${command ? ` · ${command}` : ""}${tail ? ` → ${tail.slice(-60)}` : ""}`;
+@@ -311,6 +315,11 @@ function bashFailureSummary(row: any, fallback: string): string {
+     return tail && budget > 0 ? `${head} → ${tail}` : head;
  }
  
-+/** Failures of one command, with edits in between, before the epoch split stops hiding a stuck loop. */
++/** Distinct incidents of one command after which the per-edit split stops, so a stuck loop still reaches the repeat threshold. */
 +const EPOCH_FAILURE_CAP = 5;
++/** Tools whose success means the child changed files; each one starts a new failure epoch. */
 +const EDIT_TOOLS = new Set(["edit", "write", "apply_patch"]);
 +
  /** Fold one tool execution end: failures, declared expected exits, exact retry recovery, dispositions. */
  export function foldToolEnd(model: IncidentModel, row: any, cwd: string, evidence: string, sink: IncidentSink): void {
      const toolCallId = String(row.toolCallId);
-@@ -337,22 +343,28 @@ export function foldToolEnd(model: IncidentModel, row: any, cwd: string, evidenc
+@@ -347,23 +356,36 @@ export function foldToolEnd(model: IncidentModel, row: any, cwd: string, evidenc
      }
      if (declaredExit !== undefined || error) {
          const failureId = `tool:${toolCallId}`;
 +        // A command that fails again after the child edited files is a new attempt of a fix loop, so it
 +        // starts a new group instead of reaching the repeat threshold; the cap keeps a real stuck loop visible.
-+        const failedBefore = model.failed.get(operation)?.ids.length ?? 0;
++        const failedBefore = model.groups.get(operation)?.length ?? 0;
 +        const groupOperation = toolName === "bash" && model.epoch > 0 && failedBefore < EPOCH_FAILURE_CAP ? `${operation}#e${String(model.epoch)}` : operation;
          const event: FailureEvent = declaredExit !== undefined
              ? { id: failureId, operation, kind: "failure", at: time(row), category: "tool", expected: true, evidence,
@@ -52,9 +53,9 @@ index 75b61fe..8305186 100644
 +        const incident = state.observations[failureIdentity(event.operation)]?.id ?? failureId;
          finished.incident = incident;
          model.incidentSequence.set(incident, seq);
--        model.failed.set(operation, { id: incident, sequence: seq });
-+        const ids = model.failed.get(operation)?.ids ?? [];
-+        model.failed.set(operation, { id: incident, sequence: seq, ids: ids.includes(incident) ? ids : [...ids, incident] });
++        const filed = model.groups.get(operation) ?? [];
++        if (!filed.some((x) => x.id === incident)) model.groups.set(operation, [...filed, { id: incident, operation: event.operation }]);
+         model.failed.set(operation, { id: incident, sequence: seq });
          return;
      }
 +    if (EDIT_TOOLS.has(toolName)) model.epoch += 1;
@@ -62,7 +63,14 @@ index 75b61fe..8305186 100644
          const failed = model.failed.get(operation);
          if (failed && attempt.startSequence > failed.sequence) {
 -            sink.observe([{ id: `recovered:${toolCallId}`, operation, kind: "recovered", at: time(row), incidents: [failed.id] }]);
-+            sink.observe([{ id: `recovered:${toolCallId}`, operation, kind: "recovered", at: time(row), incidents: failed.ids }]);
++            // The reducer resolves an incident through the identity of its own group, so recover each group.
++            const filed = model.groups.get(operation) ?? [{ id: failed.id, operation }];
++            const byGroup = new Map<string, string[]>();
++            for (const x of filed) byGroup.set(x.operation, [...(byGroup.get(x.operation) ?? []), x.id]);
++            sink.observe([...byGroup].map(([groupOperation, incidents], index) => ({ id: `recovered:${toolCallId}:${String(index)}`,
++                operation: groupOperation, kind: "recovered" as const, at: time(row), incidents })));
              model.failed.delete(operation);
++            model.groups.delete(operation);
          }
      }
+ }

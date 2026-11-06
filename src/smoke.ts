@@ -157,12 +157,13 @@ async function checkPatchEffects(
 /**
  * Guards the patched `pi-better-subagents` failure model: a bash failure
  * summary must end with the output tail, and a failure repeated after a file
- * edit must start a new group. Throws (non-zero child exit) when it does not.
+ * edit must start a new group that is recovered with the rest. Throws when the
+ * child script exits non-zero.
  * @param outDir Dist directory
  */
 function checkIncidentModel(outDir: string): void {
   const script = String.raw`
-    import { newIncidentModel, foldToolEnd } from ${JSON.stringify(
+    import { newIncidentModel, foldToolEnd, toolOperation } from ${JSON.stringify(
       path.join(outDir, 'packages', 'pi-better-subagents', 'incident-model.ts')
     )}
     const events = []
@@ -186,6 +187,13 @@ function checkIncidentModel(outDir: string): void {
     if (failures[0].operation === failures[1].operation || failures[1].operation !== failures[2].operation) {
       throw new Error('failures were not grouped per edit epoch')
     }
+    const recovered = []
+    sink.observe = (batch) => { recovered.push(...batch.filter((e) => e.kind === 'recovered')); return { observations: {} } }
+    const operation = toolOperation('bash', { command: 'pytest -x tests/' }, '/w')
+    model.open.set('ok', { toolCallId: 'ok', toolName: 'bash', operation, intent: {}, startSequence: model.sequence + 1 })
+    foldToolEnd(model, { toolCallId: 'ok', toolName: 'bash', isError: false, args: { command: 'pytest -x tests/' },
+      result: { content: [{ type: 'text', text: 'ok' }], details: { exitCode: 0 } } }, '/w', 'ev', sink)
+    if (recovered.length !== 2) throw new Error('expected a recovery per failure group, got ' + recovered.length)
   `
   execFileSync(
     process.execPath,
