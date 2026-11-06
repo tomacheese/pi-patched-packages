@@ -1,6 +1,6 @@
 diff --git a/README.md b/README.md
 index 5c7741d..9053df4 100644
---- a/README.md
+-X-- a/README.md
 +++ b/README.md
 @@ -13,7 +13,7 @@ Use `pi-better-goal` when a Pi session should keep an explicit objective visible
  ## Core Features
