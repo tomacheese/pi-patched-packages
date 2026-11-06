@@ -39,8 +39,12 @@ import {
   renderGoalClockLine,
 } from "./goal-clock.js";
 import { createRenderScheduler } from "./shared-render-scheduler.js";
+import { initializeNavigatorPanels, setNavigatorPanel } from "./shared-navigator-panels.js";
 import { collectSubagentActivity } from "./subagents.js";
 import { currentWorkflowOwner, skillCommandName, workflowEntry, workflowOwnerFromSkill, WORKFLOW_ENTRY_TYPE } from "./workflow.js";
+import { completionGate, pauseGate, schedulerWaitUntil } from "./workflow-gates.js";
+import { workflowRehydrateMessage, WORKFLOW_REHYDRATE_MESSAGE_TYPE } from "./rehydrate.js";
+import { requestTaskContext } from "./task-context.js";
 import {
   EVENT_ACTIVITY,
   EVENT_READY,
@@ -58,6 +62,10 @@ const POLL_INTERVAL_MS = 2_000;
 const DEFAULT_IDLE_CONTINUATION_DELAY_MS = 60_000;
 const DEFAULT_MAX_NO_PROGRESS_RETRIES = 10;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+/** Never re-poll a workflow's scheduler sooner than this, even when its stated attempt time has passed. */
+const MIN_WAIT_DELAY_MS = 5_000;
+/** Workflow skills whose invocation binds a goal when none is active, so the run cannot stop silently. */
+const AUTO_BIND_SKILLS = new Set(["rush-issues", "resolve-issues"]);
 const WAKE_DISABLED =
   process.env.PI_BETTER_GOAL_DISABLE_WAKE === "1" ||
   process.env.PI_BETTER_EXTENSION_DISABLE_WAKE === "1";
@@ -98,11 +106,11 @@ export function pausedGoalStatus(goal: GoalSnapshot, conversationalResume = true
   return agentResumable(goal, conversationalResume) ? 'goal paused · say "go" or /goal resume' : "goal paused · /goal resume";
 }
 
-function pausedGoalPrompt(goal: GoalSnapshot, conversationalResume: boolean): string {
+function pausedGoalPrompt(goal: GoalSnapshot, conversationalResume: boolean, includeObjective = true): string {
   return [
     goal.pauseReason === "handback"
-      ? `Pi Better Goal is paused because its workflow handed back unfinished work for the user's answer. Goal: ${goal.objective}`
-      : `Pi Better Goal is paused because the user pressed escape. Goal: ${goal.objective}`,
+      ? `Pi Better Goal is paused because its workflow handed back unfinished work for the user's answer.${includeObjective ? ` Goal: ${goal.objective}` : ""}`
+      : `Pi Better Goal is paused because the user pressed escape.${includeObjective ? ` Goal: ${goal.objective}` : ""}`,
     "Treat the user's messages as ordinary conversation: answer them, but do not continue the goal's work until it is resumed.",
     conversationalResume ? GOAL_RESUME_RULE : "Only the user can resume this goal, with /goal resume or alt+g. A conversational go-ahead does not resume it.",
   ].join("\n");
@@ -343,6 +351,7 @@ function formatSnapshot(snapshot: ActivitySnapshot): string {
 }
 
 export default function (pi: ExtensionAPI): void {
+  initializeNavigatorPanels(pi);
   const providers = new Map<string, BackgroundActivityProvider>();
   const providerUnsubscribers = new Map<string, () => void>();
   providers.set("subagents", {
@@ -361,6 +370,8 @@ export default function (pi: ExtensionAPI): void {
   let snapshotSequence = 0;
   let lastAppliedSnapshotSequence = 0;
   let foregroundRunning = false;
+  /** True between agent_start and agent_end: the agent loop will call the model again without a new prompt. */
+  let agentLoopActive = false;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let collecting = false;
   let collectionPending = false;
@@ -422,7 +433,7 @@ export default function (pi: ExtensionAPI): void {
    * Chat `notify` appends lines above the Working/bash status region. While the
    * agent is streaming, that height change desyncs Pi main-screen differential
    * rendering and stacks "Working..." / "Elapsed Xs" into scrollback. Keep
-   * mid-stream feedback out of the transcript; use the footer status instead.
+   * mid-stream non-error feedback out of the transcript.
    */
   const notifyGoal = (
     ctx: ExtensionContext,
@@ -433,11 +444,6 @@ export default function (pi: ExtensionAPI): void {
       return;
     }
     if (isForegroundBusy(ctx) && type !== "error") {
-      try {
-        ctx.ui.setStatus(EXTENSION_NAME, message);
-      } catch {
-        // Footer status is best-effort only.
-      }
       return;
     }
     ctx.ui.notify(message, type);
@@ -457,12 +463,22 @@ export default function (pi: ExtensionAPI): void {
     const previous = getGoal(ctx);
     const wasVisible = previous !== null && isGoalClockVisible(previous);
     pi.appendEntry(EXTENSION_NAME, goalSetEntry(goal, source));
+    // Bridge lifecycle after the raw Goal entry is durable. Harness may own the
+    // structured outcome, but Goal still owns its trigger, clocks, pauses, and wakes.
+    if (!previous || previous.goalId !== goal.goalId) {
+      requestTaskContext(pi, "start", goal);
+    } else if (goal.status === "complete") {
+      requestTaskContext(pi, "complete", goal);
+    } else if (goal.status === "paused" || goal.status === "budgetLimited") {
+      requestTaskContext(pi, "pause", goal);
+    } else if (goal.status === "active" && previous.status !== "active") {
+      requestTaskContext(pi, "resume", goal);
+    }
     continuationQueuedFor = null;
     backgroundDrainTracker = null;
     clearIdleContinuation();
     syncPollingState();
     syncResumeTool(goal);
-    applyStatus(ctx);
     // Force a full redraw when the dock height changes (absent ↔ visible clock).
     refreshGoalWidget?.(!wasVisible || !isGoalClockVisible(goal));
   };
@@ -473,6 +489,8 @@ export default function (pi: ExtensionAPI): void {
     providerLimitStreak = 0;
     const current = getGoal(ctx);
     const wasVisible = current !== null && isGoalClockVisible(current);
+    // Clearing pauses a Harness-bound outcome; it never deletes or completes it.
+    if (current) requestTaskContext(pi, "pause", current);
     pi.appendEntry(EXTENSION_NAME, goalClearEntry(current?.goalId ?? null, source));
     if (getWorkflow(ctx)) recordWorkflow(null);
     continuationQueuedFor = null;
@@ -480,7 +498,6 @@ export default function (pi: ExtensionAPI): void {
     clearIdleContinuation();
     syncPollingState();
     syncResumeTool(null);
-    applyStatus(ctx);
     refreshGoalWidget?.(wasVisible);
   };
 
@@ -532,6 +549,21 @@ export default function (pi: ExtensionAPI): void {
     goal.command?.source === "skill"
       ? workflowOwnerFromSkill(goal.command.name.slice("skill:".length), goal.command.path, registeredSkillPath)
       : null;
+
+  /**
+   * The session's workflow owner when an active goal is bound to it through its skill command, else
+   * null. Only these goals are gated by the workflow's scheduler.
+   */
+  const boundWorkflow = (goal: GoalSnapshot, ctx: ExtensionContext): NonNullable<ReturnType<typeof currentWorkflowOwner>> | null => {
+    const owner = getWorkflow(ctx);
+    if (!owner || goal.status !== "active" || goal.command?.source !== "skill") return null;
+    try {
+      const bound = goalWorkflowOwner(goal);
+      return bound?.name === owner.name && bound.path === owner.path ? owner : null;
+    } catch {
+      return null;
+    }
+  };
 
   /**
    * The one resume path shared by `/goal resume`, the hotkey, and `goal_resume`:
@@ -625,6 +657,8 @@ export default function (pi: ExtensionAPI): void {
     ctx: ExtensionContext,
     kind: "continuation" | "background-drained",
     snapshot?: ActivitySnapshot,
+    /** Fixed delay for a workflow scheduler's wait; replaces any pending timer and ignores no-progress backoff. */
+    waitDelayMs?: number,
   ): void => {
     if (WAKE_DISABLED || !preferences.autoContinue || !isPokeable(goal) || continuationQueuedFor === goal.goalId) {
       return;
@@ -633,8 +667,8 @@ export default function (pi: ExtensionAPI): void {
     if (currentContinuationState(ctx, goal.goalId)?.blocked) {
       return;
     }
-    const signature = `${goal.goalId}:${kind}`;
-    if (idleContinuationTimer && (idleContinuationSignature === signature ||
+    const signature = `${goal.goalId}:${waitDelayMs === undefined ? kind : "wait"}`;
+    if (waitDelayMs === undefined && idleContinuationTimer && (idleContinuationSignature === signature ||
         (kind === "continuation" && idleContinuationSignature === `${goal.goalId}:background-drained`))) {
       return;
     }
@@ -644,9 +678,9 @@ export default function (pi: ExtensionAPI): void {
       idleContinuationTimer = undefined;
       idleContinuationSignature = "";
       void sendIdleContinuationAfterAudit(goal.goalId, ctx, kind, snapshot);
-    }, kind === "continuation" && providerLimitStreak > 0
+    }, waitDelayMs ?? (kind === "continuation" && providerLimitStreak > 0
       ? providerLimitDelay(providerLimitStreak)
-      : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0));
+      : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0)));
     idleContinuationTimer.unref?.();
   };
 
@@ -685,6 +719,8 @@ export default function (pi: ExtensionAPI): void {
     tokenBudget: number | null,
     ctx: ExtensionContext,
     source: "command",
+    /** False when the user's own message already invoked the command, so the goal must not send it again. */
+    dispatch = true,
   ): GoalSnapshot => {
     const objectiveError = validateObjective(objective);
     if (objectiveError) {
@@ -706,8 +742,8 @@ export default function (pi: ExtensionAPI): void {
     setGoal(goal, ctx, source);
     if (command) {
       if (owner) recordWorkflow(owner);
-      pi.sendUserMessage(commandInvocation(command), { deliverAs: "followUp", expandPromptTemplates: true });
-      if (command.source === "extension") scheduleIdleContinuation(goal, ctx, "continuation");
+      if (dispatch) pi.sendUserMessage(commandInvocation(command), { deliverAs: "followUp", expandPromptTemplates: true });
+      if (dispatch && command.source === "extension") scheduleIdleContinuation(goal, ctx, "continuation");
     } else {
       queueGoalContinuation(goal, ctx);
     }
@@ -747,43 +783,8 @@ export default function (pi: ExtensionAPI): void {
       pi.events.emit(EVENT_TERMINAL_ATTENTION, snapshot);
       if (execution !== executionGeneration) return null;
     }
-    applyStatus(ctx);
-
     return snapshot;
   };
-
-  /** Footer status from the goal state and the latest activity snapshot. */
-  const statusText = (ctx: ExtensionContext, snapshot: ActivitySnapshot | null): string | undefined => {
-    const goal = getGoal(ctx);
-    let waitingOnAnswer = 0;
-    if (snapshot) {
-      for (const activeAtStart of pendingQuestions.values()) {
-        waitingOnAnswer += finishedSinceQuestion(activeAtStart, snapshot).length;
-      }
-    }
-    if (waitingOnAnswer > 0) return `${waitingOnAnswer} background done; waiting on your answer`;
-    const background = snapshot?.backgroundRunning
-      ? `bg ${snapshot.activeBackgroundCount}${snapshot.unhealthyBackgroundCount ? `, ${snapshot.unhealthyBackgroundCount} unhealthy` : ""}`
-      : undefined;
-    if (goal?.status === "paused") return background ? `${pausedGoalStatus(goal, preferences.conversationalResume)} · ${background}` : pausedGoalStatus(goal, preferences.conversationalResume);
-    if (background) return background;
-    const continuation = goal ? currentContinuationState(ctx, goal.goalId) : null;
-    if (continuation?.blocked) return "waiting: no progress";
-    const goalStall = observeGoalStall(goal, continuation, {
-      foregroundRunning,
-      backgroundRunning: snapshot?.backgroundRunning ?? false,
-    });
-    return goalStall?.state === "stalled" ? "goal stalled" : undefined;
-  };
-
-  function applyStatus(ctx: ExtensionContext): void {
-    if (!ctx.hasUI) return;
-    try {
-      ctx.ui.setStatus(EXTENSION_NAME, statusText(ctx, latestSnapshot));
-    } catch {
-      // UI status is best-effort only.
-    }
-  }
 
   /**
    * `goal_resume` is in the model's tool list only while an escape-paused goal
@@ -856,7 +857,8 @@ export default function (pi: ExtensionAPI): void {
     if (!ctx.hasUI) {
       return;
     }
-    ctx.ui.setWidget(
+    setNavigatorPanel(
+      ctx,
       EXTENSION_NAME,
       (tui, theme) => {
         const inputIsEditor = (): boolean => {
@@ -906,10 +908,15 @@ export default function (pi: ExtensionAPI): void {
             }
             const nextRenderDelay = goalClockRefreshDelayMs(goal);
             if (nextRenderDelay !== null) scheduler.schedule(nextRenderDelay);
+            // Schedule before handing visual ownership to Harness so its header
+            // keeps ticking. An absent display response preserves standalone Goal.
+            if (requestTaskContext(pi, "inspect", goal, width).display === true) {
+              return [];
+            }
             const fg = typeof theme?.fg === "function"
               ? (color: string, value: string) => theme.fg(color as never, value)
               : undefined;
-            return [renderGoalClockLine(goal, width, undefined, fg), ""];
+            return [renderGoalClockLine(goal, width, undefined, fg)];
           },
         };
       },
@@ -937,7 +944,6 @@ export default function (pi: ExtensionAPI): void {
     preferences = writeGoalPreference(key, enabled);
     if (previous.autoContinue !== preferences.autoContinue) clearIdleContinuation();
     syncResumeTool(getGoal(ctx));
-    applyStatus(ctx);
     if (!previous.autoContinue && preferences.autoContinue) {
       const snapshot = await publishSnapshot(ctx);
       const goal = getGoal(ctx);
@@ -1112,12 +1118,21 @@ export default function (pi: ExtensionAPI): void {
           details: { ok: true, goal: current },
         };
       }
+      const gated = boundWorkflow(current, ctx);
+      const verdict = gated ? await completionGate(ctx.sessionManager.getBranch(), gated) : null;
+      if (verdict && !verdict.allow) {
+        return {
+          content: [{ type: "text", text: verdict.message }],
+          details: { ok: false, goal: current, due: verdict.due },
+        };
+      }
       const goal = goalWithStatus(current, "complete");
       setGoal(goal, ctx, "tool");
       if (getWorkflow(ctx)) recordWorkflow(null);
+      const warning = verdict?.allow ? verdict.warning : undefined;
       return {
-        content: [{ type: "text", text: "Goal marked complete." }],
-        details: { ok: true, goal },
+        content: [{ type: "text", text: warning ? `Goal marked complete. ${warning}` : "Goal marked complete." }],
+        details: { ok: true, goal, ...(warning ? { warning } : {}) },
       };
     },
   });
@@ -1198,6 +1213,12 @@ export default function (pi: ExtensionAPI): void {
       const owner = getWorkflow(ctx);
       if (!owner) return { content: [{ type: "text", text: "No workflow owns this session." }], details: { released: false } };
       const goal = getGoal(ctx);
+      const gated = goal ? boundWorkflow(goal, ctx) : null;
+      const verdict = gated ? await pauseGate(ctx.sessionManager.getBranch(), gated) : null;
+      if (verdict && !verdict.allow) {
+        return { content: [{ type: "text", text: verdict.message }], details: { released: false, goalPaused: false } };
+      }
+      const warning = verdict?.allow ? verdict.warning : undefined;
       let resumeCommand: string | undefined;
       if (goal?.status === "active" && goal.command?.source === "skill") {
         const boundOwner = workflowOwnerFromSkill(goal.command.name.slice("skill:".length), goal.command.path, registeredSkillPath);
@@ -1208,7 +1229,7 @@ export default function (pi: ExtensionAPI): void {
       }
       recordWorkflow(null);
       return {
-        content: [{ type: "text", text: `Released ${owner.name} workflow ownership.${resumeCommand ? ` Its Goal is paused, not complete; the user's go-ahead or /goal resume rebinds /${resumeCommand}.` : ""}` }],
+        content: [{ type: "text", text: `Released ${owner.name} workflow ownership.${resumeCommand ? ` Its Goal is paused, not complete; the user's go-ahead or /goal resume rebinds /${resumeCommand}.` : ""}${warning ? ` ${warning}` : ""}` }],
         details: { released: true, owner: owner.name, goalPaused: resumeCommand !== undefined },
       };
     },
@@ -1245,10 +1266,12 @@ export default function (pi: ExtensionAPI): void {
     continuationQueuedFor = null;
     backgroundDrainTracker = null;
     lastAgentEvidence = null;
+    providerLimitStreak = 0;
     collecting = false;
     collectionPending = false;
     currentCtx = ctx;
     foregroundRunning = !ctx.isIdle();
+    agentLoopActive = false;
     try {
       preferences = readGoalPreferences();
     } catch (error) {
@@ -1307,7 +1330,21 @@ export default function (pi: ExtensionAPI): void {
       if (command) {
         try {
           const owner = workflowOwnerFromSkill(skillName, command.sourceInfo.path, registeredSkillPath);
-          if (owner) recordWorkflow(owner);
+          if (owner) {
+            // Without a goal nothing re-prompts the coordinator when it stops early, so bind one now
+            // exactly as `/goal <this invocation>` would. The user's message already runs the skill.
+            const existing = getGoal(ctx);
+            if (AUTO_BIND_SKILLS.has(skillName) && (!existing || existing.status === "complete")) {
+              try {
+                startOrReplaceGoal(event.text.trim(), null, ctx, "command", false);
+              } catch (error) {
+                recordWorkflow(owner);
+                notifyGoal(ctx, `Could not bind a goal to /skill:${skillName}: ${error instanceof Error ? error.message : String(error)}`, "warning");
+              }
+            } else {
+              recordWorkflow(owner);
+            }
+          }
         } catch (error) {
           notifyGoal(ctx, error instanceof Error ? error.message : String(error), "error");
           return { action: "handled" as const };
@@ -1330,6 +1367,9 @@ export default function (pi: ExtensionAPI): void {
     currentCtx = ctx;
     const goal = currentGoalSnapshot(ctx);
     const owner = getWorkflow(ctx);
+    // A defined `enabled` means a Harness runtime is present, even when
+    // Outcome & Todo is off. Then Harness owns the structured outcome text.
+    const harnessPresent = requestTaskContext(pi, "inspect", goal).enabled !== undefined;
     const snapshot = await publishSnapshot(ctx);
     if (!snapshot) return;
     const permissions = goal ? currentPermissionHold(ctx, goal.goalId) : null;
@@ -1342,7 +1382,7 @@ export default function (pi: ExtensionAPI): void {
       return { systemPrompt: `${event.systemPrompt}\n\n${permissionPrompt}` };
     }
     const pausedInstruction = permissionPrompt || (goal?.status === "paused" && (goal.pauseReason === "interrupt" || goal.pauseReason === "handback")
-      ? pausedGoalPrompt(goal, preferences.conversationalResume) : "");
+      ? pausedGoalPrompt(goal, preferences.conversationalResume, !harnessPresent) : "");
     if (!isPokeable(goal) && !owner) {
       return pausedInstruction ? { systemPrompt: `${event.systemPrompt}\n\n${pausedInstruction}` } : undefined;
     }
@@ -1375,7 +1415,11 @@ export default function (pi: ExtensionAPI): void {
               : "While the goal is paused, this overrides the workflow instructions below: do not advance the workflow until the goal is resumed.\n\n")
             : "") +
           `Active workflow: ${owner.name} (${owner.path}). Its task plan owns planning and the parent is a coordinator, not a product-code implementer. Follow the workflow instructions below, including on resumed turns:\n\n${instructions}` +
-          (isPokeable(goal) ? `\n\nActive objective: ${goal.objective}. Complete it only after the workflow completion audit.` : "") +
+          (isPokeable(goal)
+            ? harnessPresent
+              ? "\n\nComplete the goal only after the workflow completion audit."
+              : `\n\nActive objective: ${goal.objective}. Complete it only after the workflow completion audit.`
+            : "") +
           (questionInstruction ? `\n\n${questionInstruction.trim()}` : "") +
           (heldInstruction ? `\n\n${heldInstruction}` : ""),
       };
@@ -1385,6 +1429,15 @@ export default function (pi: ExtensionAPI): void {
     const backgroundInstruction = snapshot.backgroundRunning
       ? ` The goal still has delegated background work running (${summarizeActiveBackground(snapshot)}). Foreground idleness alone is not goal completion; keep any structured plan current and do not mark verification, the plan, or the goal complete until every relevant delegated task reaches a terminal state and its result or failure has been inspected and integrated.`
       : "";
+    if (harnessPresent) {
+      // Harness owns the outcome text. Retain only the Goal-specific guidance
+      // that the Outcome & Todo prompt cannot replace.
+      const retained = [heldInstruction, backgroundInstruction.trim(), questionInstruction.trim(), permissionPrompt]
+        .filter((part) => part.length > 0);
+      return retained.length > 0
+        ? { systemPrompt: `${event.systemPrompt}\n\n${retained.join("\n\n")}` }
+        : undefined;
+    }
     return {
       systemPrompt:
         `${event.systemPrompt}\n\n` +
@@ -1400,6 +1453,7 @@ export default function (pi: ExtensionAPI): void {
     agentGeneration = executionGeneration;
     currentCtx = ctx;
     foregroundRunning = true;
+    agentLoopActive = true;
     clearIdleContinuation();
     continuationQueuedFor = null;
     lastAgentEvidence = null;
@@ -1421,6 +1475,7 @@ export default function (pi: ExtensionAPI): void {
   });
 
   pi.on("agent_end", async (event, ctx) => {
+    agentLoopActive = false;
     const currentRun = agentGeneration === executionGeneration;
     // A provider limit (usage or rate limit) produced no work to judge: it
     // records no evidence, so the no-progress counter is neither advanced nor reset.
@@ -1538,6 +1593,21 @@ export default function (pi: ExtensionAPI): void {
     if (!isPokeable(goal) || snapshot.backgroundRunning) {
       return;
     }
+    // A run the scheduler says is only waiting (a retry is due at a known time) is not stuck: wake at
+    // that time and leave the no-progress count alone, since nothing the model could do changes it.
+    const waitOwner = preferences.autoContinue && !WAKE_DISABLED ? boundWorkflow(goal, ctx) : null;
+    if (waitOwner) {
+      const execution = executionGeneration;
+      const waitUntil = await schedulerWaitUntil(ctx.sessionManager.getBranch(), waitOwner);
+      if (execution !== executionGeneration) return;
+      if (waitUntil !== undefined) {
+        resetContinuationState(goal);
+        lastAgentEvidence = null;
+        scheduleIdleContinuation(goal, ctx, "continuation", snapshot,
+          Math.min(MAX_TIMER_DELAY_MS, Math.max(MIN_WAIT_DELAY_MS, waitUntil - Date.now())));
+        return;
+      }
+    }
     const evidence = lastAgentEvidence;
     if (!evidence) {
       scheduleIdleContinuation(goal, ctx, "continuation", snapshot);
@@ -1563,7 +1633,6 @@ export default function (pi: ExtensionAPI): void {
     if (blocked) {
       refreshGoalWidget?.();
       if (ctx.hasUI) {
-        ctx.ui.setStatus(EXTENSION_NAME, "waiting: no progress");
         ctx.ui.notify(
           `Goal automatic continuation is waiting after ${noProgressRetries} identical retries (${evidence.summary}). Use /goal resume or alt+g to resume it.`,
           "warning",
@@ -1572,6 +1641,29 @@ export default function (pi: ExtensionAPI): void {
       return;
     }
     scheduleIdleContinuation(goal, ctx, "continuation", snapshot);
+  });
+
+  // A compaction summary keeps run state but drops the coordinator skill's rules. Re-inject them
+  // (or the skill's own rehydrate script output) so the model sees them before its next step.
+  pi.on("session_compact", async (event, ctx) => {
+    const owner = getWorkflow(ctx);
+    if (!owner) return;
+    const content = await workflowRehydrateMessage(owner, ctx.cwd);
+    if (!content) return;
+    // Inside a running agent loop (mid-run compaction or an overflow retry) steer it into the next
+    // model call. Otherwise append it without triggering a turn: the next turn, whatever starts it,
+    // sees it. Steering after the loop ended would start an unprompted continuation.
+    const options = agentLoopActive || event.willRetry ? { deliverAs: "steer" as const } : { triggerTurn: false };
+    try {
+      pi.sendMessage({
+        customType: WORKFLOW_REHYDRATE_MESSAGE_TYPE,
+        content,
+        display: true,
+        details: { workflow: owner.name, path: owner.path, reason: event.reason },
+      }, options);
+    } catch {
+      // Best effort: never fail or block the session over a rehydrate notice.
+    }
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
@@ -1592,8 +1684,7 @@ export default function (pi: ExtensionAPI): void {
     latestSnapshot = null;
     collectionPending = false;
     try {
-      ctx.ui.setStatus(EXTENSION_NAME, undefined);
-      ctx.ui.setWidget(EXTENSION_NAME, undefined);
+      setNavigatorPanel(ctx, EXTENSION_NAME, undefined);
     } catch {
       // Best-effort cleanup.
     }
