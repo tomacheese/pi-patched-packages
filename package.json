@@ -28,7 +28,7 @@
     "release": "tsx ./src/release-cli.ts"
   },
   "devDependencies": {
-    "@book000/eslint-config": "1.16.115",
+    "@book000/eslint-config": "1.16.116",
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@types/jest": "30.0.0",
     "@types/node": "26.6.6",
@@ -41,7 +41,7 @@
     "jest-expect-message": "1.1.3",
     "pi-auto-continue": "0.4.1",
     "pi-better-goal": "0.12.1",
-    "pi-better-subagents": "0.26.2",
+    "pi-better-subagents": "0.27.2",
     "prettier": "3.9.10",
     "run-z": "2.1.0",
     "ts-jest": "29.4.15",
