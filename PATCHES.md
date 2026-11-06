@@ -2,6 +2,18 @@
 
 Upstream packages with the local patches applied (see `patches/` on `master`).
 
+## pi-auto-continue
+
+- upstream: 0.4.1
+- patch: 0001-silent-auto-retry-with-backoff.patch sha256:4ace811304f01d852f8a702b652bc928fb7c56dbf57373cbbefe104201d91bcf
+- patch: 0002-session-scoped-waits.patch sha256:f075fab738e4497f1c78d23254bf190798f8d76854b5e027c75036a41c7b1417
+- patch: 0003-wait-for-known-reset-and-parse-tilde.patch sha256:94f6b7528e40b613ab28d3ebca159f17b623c7adbcc3f32f468f89983015c10a
+- patch: 0004-resume-after-transient-stream-failure.patch sha256:860007f03ec88d5ed434c0ca00000fe9ca72418cdf34b6a94be59261075235f0
+- file: src/index.ts sha256:31bc55bd7d488c5831626025fea4f6b00e345475f124c78cefa928c51e7f63e0
+- file: src/pending-store.ts sha256:8895be6c68083eab31cba4e16044551d15b9b8c9ee989096ba5e8d6f62b7cbb8
+- file: src/reset-parse.ts sha256:3a25f787ef13a4c99d60f7377911f0197b2786eb0c95850754a24be376407243
+- file: src/util.ts sha256:93f5c69709d58183a035a4b6fcc263e37109ee324c33ced725818e199f7e5e49
+
 ## pi-better-goal
 
 - upstream: 0.11.0

@@ -12,6 +12,7 @@
   },
   "pi": {
     "extensions": [
+      "./packages/pi-auto-continue/src/index.ts",
       "./packages/pi-better-goal/src/index.ts",
       "./packages/pi-better-subagents/index.ts"
     ]

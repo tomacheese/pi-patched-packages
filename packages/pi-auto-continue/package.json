@@ -1,0 +1,59 @@
+{
+  "name": "pi-auto-continue",
+  "version": "0.4.1",
+  "description": "Pi extension: detect rate/usage limits, wait for the quota reset, then resume the task — in place or in a fresh session via a compact handoff (avoids KV-cache re-ingestion cost).",
+  "license": "MIT",
+  "type": "module",
+  "author": "chxsong",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chxsong/pi-auto-continue.git"
+  },
+  "homepage": "https://github.com/chxsong/pi-auto-continue#readme",
+  "bugs": {
+    "url": "https://github.com/chxsong/pi-auto-continue/issues"
+  },
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "pi-package",
+    "rate-limit",
+    "quota",
+    "auto-continue",
+    "auto-resume",
+    "handoff"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "check": "npm run typecheck && npm run test",
+    "prepublishOnly": "npm run check"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.86.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
+}
