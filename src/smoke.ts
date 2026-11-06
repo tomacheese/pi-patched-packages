@@ -24,6 +24,7 @@ const EXPECTED_COMMANDS = [
   { command: 'ac', packageName: 'pi-auto-continue' },
   { command: 'goal', packageName: 'pi-better-goal' },
   { command: 'agents', packageName: 'pi-better-subagents' },
+  { command: 'loop', packageName: 'pi-loop-monitor' },
 ] as const
 
 /** Time allowed for pi to answer `get_commands`. */
@@ -285,6 +286,34 @@ function checkGoalHelpers(outDir: string): void {
   console.log('goal helpers: ok')
 }
 
+/**
+ * Guards the patched `pi-loop-monitor` (compiled JavaScript, so a patch cannot be
+ * type-checked): the files must still parse and carry the patched behavior.
+ * Throws when a marker is missing.
+ * @param outDir Dist directory
+ */
+async function checkLoopMonitorPatches(outDir: string): Promise<void> {
+  const dist = path.join(outDir, 'packages', 'pi-loop-monitor', 'dist')
+  const markers: [string, string[]][] = [
+    ['index.js', ['providerLimitedUntil']],
+    ['tools/loop-tools.js', ['minimum: 0']],
+    ['tools/monitor-tools.js', ['!params.onSignal']],
+    ['runtime/notification-runtime.js', ['check current state before acting']],
+  ]
+  for (const [file, needles] of markers) {
+    const full = path.join(dist, file)
+    execFileSync(process.execPath, ['--check', full], { stdio: 'inherit' })
+    const text = await fs.readFile(full, 'utf8')
+    for (const needle of needles) {
+      if (!text.includes(needle)) throw new Error(`${file} lacks ${needle}`)
+    }
+  }
+  const entry = await fs.readFile(path.join(dist, 'index.js'), 'utf8')
+  if (entry.includes('"monitor:started"')) {
+  }
+  console.log('loop monitor patches: ok')
+}
+
 /** Runs the smoke test. */
 async function main(): Promise<void> {
   const repoRoot = process.cwd()
@@ -335,6 +364,7 @@ async function main(): Promise<void> {
 
     checkResetParse(outDir)
     checkGoalHelpers(outDir)
+    await checkLoopMonitorPatches(outDir)
     const checked = await checkPatchEffects(repoRoot, outDir)
     console.log(`patch effects: ${String(checked)} file(s) verified`)
   } finally {

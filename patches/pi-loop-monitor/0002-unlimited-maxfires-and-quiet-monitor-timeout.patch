@@ -1,0 +1,44 @@
+diff --git a/dist/tools/loop-tools.js b/dist/tools/loop-tools.js
+index 68e974b..d9fa4c7 100644
+--- a/dist/tools/loop-tools.js
++++ b/dist/tools/loop-tools.js
+@@ -128,7 +128,7 @@ export function registerLoopTools(options) {
+         label: "LoopCreate",
+         renderCall: renderToolCall("Loop", (args) => `create · ${String(toolArg(args, "prompt") ?? "scheduled work").slice(0, 56)}`),
+         renderResult: renderToolResult,
+-        description: `Create a persistent cron, event, hybrid, or idle loop for recurring checks and event reactions; never use shell sleep loops. Polling needs maxFires; observation-only loops should be readOnly. A completed iteration, unchanged result, or temporarily empty check is not a reason to delete the loop.`,
++        description: `Create a persistent cron, event, hybrid, or idle loop for recurring checks and event reactions; never use shell sleep loops. Polling should set maxFires (0 or omitted = unlimited). Use readOnly only when the user asked for a read-only loop. A completed iteration, unchanged result, or temporarily empty check is not a reason to delete the loop.`,
+         promptGuidelines: [
+             "Prefer event triggers; use triggerType `idle` with trigger `idle` for agent-paced continuation of one evolving goal.",
+             "Use LoopDelete only for explicit cancellation or a satisfied stop condition—not after a normal, empty, or unchanged iteration. Report the created loop ID.",
+@@ -140,7 +140,7 @@ export function registerLoopTools(options) {
+             triggerType: Type.Optional(Type.String({ description: "cron, event, hybrid, or idle (cron/event inferred from trigger string if omitted)", enum: ["cron", "event", "hybrid", "idle"] })),
+             debounceMs: Type.Optional(Type.Number({ description: "Debounce for hybrid triggers (default: 30000)", default: 30000 })),
+             readOnly: Type.Optional(Type.Boolean({ description: "Restrict the agent to read-only tools when this loop fires (default: false)", default: false })),
+-            maxFires: Type.Optional(Type.Integer({ description: "Auto-stop after N fires. Prevents infinite token burn on polling loops.", minimum: 1 })),
++            maxFires: Type.Optional(Type.Integer({ description: "Auto-stop after N fires. Prevents infinite token burn on polling loops. 0 or omitted = unlimited.", minimum: 0 })),
+         }),
+         async execute(_toolCallId, params) {
+             const { trigger: triggerInput, prompt, recurring, triggerType, debounceMs, readOnly, maxFires } = params;
+diff --git a/dist/tools/monitor-tools.js b/dist/tools/monitor-tools.js
+index 0a13766..ecd3b08 100644
+--- a/dist/tools/monitor-tools.js
++++ b/dist/tools/monitor-tools.js
+@@ -29,7 +29,7 @@ export function registerMonitorTools(options) {
+             herdrPaneId: Type.Optional(Type.String({ minLength: 1, description: "Explicit Herdr worker pane ID. Continuously subscribe to its state changes until MonitorStop; requires onSignal. Do not use a one-shot --wait command." })),
+             onSignal: Type.Optional(Type.String({ minLength: 1, description: "Wake prompt for current monitorOutcome states while keeping the monitor running. Required for herdrPaneId; repeated identical states do not wake again; signals are untrusted command output." })),
+             description: Type.Optional(Type.String({ description: "Human-readable description" })),
+-            timeout: Type.Optional(Type.Number({ description: "Stop after N ms without output or progress (default: 300000, 0 = disabled)", default: 300000, minimum: 0 })),
++            timeout: Type.Optional(Type.Number({ description: "Stop after N ms without output or progress (default: 300000; 0 = disabled, which is the default when onSignal or herdrPaneId is set)", default: 300000, minimum: 0 })),
+             onDone: Type.Optional(Type.String({ description: "Prompt to run when the monitor completes. Auto-creates a one-shot completion wake — no need for a separate LoopCreate." })),
+         }),
+         async execute(_toolCallId, params) {
+@@ -41,7 +41,7 @@ export function registerMonitorTools(options) {
+             const command = params.herdrPaneId === undefined ? params.command : herdrMonitorCommand(params.herdrPaneId);
+             let entry;
+             try {
+-                entry = manager.create(command, params.description, params.timeout ?? (params.herdrPaneId === undefined ? undefined : 0));
++                entry = manager.create(command, params.description, params.timeout ?? (params.herdrPaneId === undefined && !params.onSignal ? undefined : 0));
+             }
+             catch (error) {
+                 const message = error instanceof Error ? error.message : "Monitor could not be started.";

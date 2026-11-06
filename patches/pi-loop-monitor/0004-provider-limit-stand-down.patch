@@ -1,0 +1,44 @@
+diff --git a/dist/index.js b/dist/index.js
+index 2735f83..91f520c 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -139,9 +139,39 @@ export default function (pi) {
+             .catch((error) => debug("loop notification delivery failed", entry.id, error));
+         pi.events.emit("loop:fire", structuredClone(event));
+     }
++    // Provider limit stand-down: while the model provider reports a usage limit, recurring wakes cannot
++    // succeed. They are skipped (not counted as fires) until the reset time or an exponential backoff
++    // (5 min doubling to 1 h) has passed, instead of failing every 2 minutes for hours.
++    let providerLimitedUntil = 0;
++    let providerLimitStreak = 0;
++    pi.on("agent_end", (event) => {
++        const messages = Array.isArray(event?.messages) ? event.messages : [];
++        let last;
++        for (let index = messages.length - 1; index >= 0; index -= 1) {
++            if (messages[index]?.role === "assistant") {
++                last = messages[index];
++                break;
++            }
++        }
++        const text = last?.stopReason === "error" && typeof last.errorMessage === "string" ? last.errorMessage : "";
++        if (!/usage[ _-]?limit|rate[ _-]?limit|quota|too many requests|\b429\b|overloaded/i.test(text)) {
++            if (last?.stopReason !== "error") {
++                providerLimitStreak = 0;
++                providerLimitedUntil = 0;
++            }
++            return;
++        }
++        providerLimitStreak += 1;
++        const hint = /resets?\s+in\s+(?:~\s*)?(\d+(?:\.\d+)?)\s*(h|m)(?![a-z])/i.exec(text);
++        const hinted = hint ? Number.parseFloat(hint[1]) * (hint[2].toLowerCase() === "h" ? 3_600_000 : 60_000) : 0;
++        const backoff = Math.min(60 * 60_000, 5 * 60_000 * 2 ** Math.min(providerLimitStreak - 1, 10));
++        providerLimitedUntil = Date.now() + Math.min(Math.max(hinted, backoff), 12 * 3_600_000);
++    });
+     function onLoopFire(entry, monitor, origin = monitor ? "monitor" : "dynamic") {
+         if (!isCurrentExtensionContext())
+             return;
++        if (Date.now() < providerLimitedUntil && entry.recurring !== false)
++            return;
+         const current = store.get(entry.id);
+         if (current?.status !== "active") {
+             triggerSystem.remove(entry.id);
