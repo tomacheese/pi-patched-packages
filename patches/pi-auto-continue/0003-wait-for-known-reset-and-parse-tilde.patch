@@ -1,5 +1,5 @@
 diff --git a/src/index.ts b/src/index.ts
-index b1c52ee..2c36413 100644
+index bbd1a4d..0c0603f 100644
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -50,6 +50,8 @@ const THRESHOLD_CHECK_INTERVAL_MS = 5 * 60_000;
@@ -11,7 +11,27 @@ index b1c52ee..2c36413 100644
  
  interface RateLimitEvidence {
  	rateLimited: boolean;
-@@ -560,8 +562,11 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+@@ -78,8 +80,10 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 
+ 	let usageCache: { at: number; snapshot: UsageSnapshot } | undefined;
+ 	let lastThresholdCheck = 0;
+-	/** Consecutive auto-mode resumes that did not clear the rate limit. */
++	/** Auto-mode waits that ended and were followed by another rate limit; drives the retry backoff. */
+ 	let autoResumeCount = 0;
++	/** Epoch ms at which the last auto-mode wait ends, so limit errors arriving during it are not counted as failed retries. */
++	let lastAutoWaitEndMs = 0;
+ 	let scheduler: WaitScheduler;
+ 	const pendingStore = new SessionWaitStore();
+ 	let boundSessionFile: string | undefined;
+@@ -555,13 +559,23 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 		}
+ 
+ 		// In auto mode a confirmed usage limit always schedules a wait, never a
+-		// blocking selection dialog. Repeated failures back off rather than
+-		// immediately retrying a stale/incorrect reset timestamp indefinitely.
++		// blocking selection dialog. A known reset time is trusted for the first
++		// retries; if the limit persists after waits have ended, the retry backoff
++		// takes over so a stale or very short reset cannot loop indefinitely.
  		if (config.autoMode === "auto") {
  			const backoffMs = Math.min(AUTO_MAX_RETRY_DELAY_MS, AUTO_MIN_WAIT_MS * 2 ** Math.min(autoResumeCount, 4));
  			const cappedResetWaitMs = Math.min(remainingMs, config.autoResumeMaxWaitMinutes * 60_000);
@@ -19,23 +39,30 @@ index b1c52ee..2c36413 100644
 -			autoResumeCount = Math.min(autoResumeCount + 1, 5);
 +			// A known, still-future reset time is exact: wait for it instead of the
 +			// retry backoff, which only guards against missing or stale reset data.
++			// After two retries that hit the limit again, the backoff is a floor too.
 +			const resetKnown = resetInfo !== null && remainingMs > 0;
-+			const waitMs = resetKnown ? cappedResetWaitMs + AUTO_RESET_MARGIN_MS : backoffMs;
-+			if (!resetKnown) autoResumeCount = Math.min(autoResumeCount + 1, 5);
++			const waitMs = resetKnown
++				? Math.max(cappedResetWaitMs + AUTO_RESET_MARGIN_MS, autoResumeCount >= 2 ? backoffMs : 0)
++				: backoffMs;
++			// Only an error that arrives after the previous wait ended is a failed retry;
++			// other limit errors during a wait must not inflate the counter.
++			if (Date.now() >= lastAutoWaitEndMs) autoResumeCount = Math.min(autoResumeCount + 1, 5);
++			lastAutoWaitEndMs = Date.now() + waitMs;
  			logDebug(`auto mode wait: ${formatRemainingTime(waitMs)}; consecutive rate limits=${autoResumeCount}; reset source=${resetInfo?.source ?? "unknown"}`);
  			await armWait(ctx, { strategy, targetTime: new Date(Date.now() + waitMs), provider });
  			return;
 diff --git a/src/reset-parse.ts b/src/reset-parse.ts
-index 6b39dad..4c8a8a3 100644
+index 6b39dad..9827522 100644
 --- a/src/reset-parse.ts
 +++ b/src/reset-parse.ts
-@@ -155,7 +155,8 @@ export function parseHeaderReset(
+@@ -155,7 +155,9 @@ export function parseHeaderReset(
  }
  
  const ISO_PATTERN = /\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\b/;
 -const RELATIVE_PATTERN = /(?:in|after|wait|try again in)\s+((?:\d+(?:\.\d+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b\s*)+)/i;
-+// `~` covers `Resets in ~125h`; (?![a-z]) rather than \b so `1h30m` parses.
-+const RELATIVE_PATTERN = /(?:in|after|wait|try again in)\s+~?\s*((?:\d+(?:\.\d+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])\s*)+)/i;
++// `(?:~\s*)?` covers `Resets in ~125h` without letting two `\s` quantifiers compete
++// for the same whitespace (quadratic backtracking); (?![a-z]) rather than \b so `1h30m` parses.
++const RELATIVE_PATTERN = /(?:in|after|wait|try again in)\s+(?:~\s*)?((?:\d+(?:\.\d+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])\s*)+)/i;
  const CLOCK_PATTERN = /(?:at|until|resets? at)\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]m)?/i;
  
  /** Parse a relative duration phrase such as `1 hour 30 minutes`. */

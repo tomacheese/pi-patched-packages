@@ -43,7 +43,7 @@ The version is derived from what changed in `PATCHES.md` since the previous rele
 ```bash
 pnpm install
 pnpm build   # build/dist
-pnpm smoke   # build + load both extensions through pi (rpc get_commands)
+pnpm smoke   # build + load the patched extensions through pi (rpc get_commands)
 pnpm lint
 pnpm test
 ```
@@ -56,6 +56,8 @@ git -C <upstream checkout> diff --relative=packages/<package> <base> <target> --
 ```
 
 Do not include `README.md` in a patch: upstream documentation changes would make every upstream bump conflict.
+
+`pi-auto-continue` is a single-package upstream (`chxsong/pi-auto-continue`): export from its repository root with `-- src` instead of `--relative=packages/<package>`.
 
 See `AGENTS.md` for the full workflow.
 

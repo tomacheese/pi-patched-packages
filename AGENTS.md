@@ -31,7 +31,7 @@ pnpm is required (`preinstall` runs `only-allow pnpm`). The Node.js version is i
 ```bash
 pnpm install        # install dependencies
 pnpm build          # build/dist
-pnpm smoke          # build, install into a scratch pi agent directory, check goal/agents commands
+pnpm smoke          # build, install into a scratch pi agent directory, check that each patched extension's command loads and that the patched reset parser works
 pnpm release        # publish build/dist (CI only: needs a push-capable origin and GH_TOKEN)
 pnpm lint           # prettier --check + eslint + tsc
 pnpm fix            # prettier --write + eslint --fix

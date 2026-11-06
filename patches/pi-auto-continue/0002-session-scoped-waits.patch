@@ -1,5 +1,5 @@
 diff --git a/src/index.ts b/src/index.ts
-index e0f1bb8..b1c52ee 100644
+index e0f1bb8..bbd1a4d 100644
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -32,16 +32,13 @@ import {
@@ -46,12 +46,9 @@ index e0f1bb8..b1c52ee 100644
  	}
  
  	scheduler = new WaitScheduler({
-@@ -658,69 +658,51 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
- 		notifyConfigProblemOnce(ctx);
- 		maybeNotifyFirstRun(ctx);
- 
--		// Non-interactive runs never schedule a wait: there is no countdown to show
--		// and no /ac cancel to stop an autonomous resume.
+@@ -661,23 +661,30 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 		// Non-interactive runs never schedule a wait: there is no countdown to show
+ 		// and no /ac cancel to stop an autonomous resume.
  		if (!safeHasUi(ctx)) return;
 +		let sessionFile: string | undefined;
 +		try {
@@ -90,12 +87,9 @@ index e0f1bb8..b1c52ee 100644
  		}
 +		const wait = loaded.wait;
  
--		// A wait is armed for the provider that hit the limit. If the user switched
--		// providers, its reset time is meaningless, so discard instead of resuming
--		// the wrong task under the wrong quota.
- 		const currentProvider = providerId(ctx);
- 		if (wait.provider && currentProvider !== "unknown" && wait.provider !== currentProvider) {
- 			ui.notify(
+ 		// A wait is armed for the provider that hit the limit. If the user switched
+ 		// providers, its reset time is meaningless, so discard instead of resuming
+@@ -688,39 +695,19 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
  				`pi-auto-continue: a saved wait for '${wait.provider}' does not match the active provider '${currentProvider}' and was discarded.`,
  				"warning",
  			);
@@ -139,7 +133,7 @@ index e0f1bb8..b1c52ee 100644
  			return;
  		}
  
-@@ -820,9 +802,10 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+@@ -820,9 +807,10 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
  
  	pi.on("session_shutdown", () => {
  		// Clear timers so a pending wait can never fire against a stale context.

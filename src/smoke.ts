@@ -1,6 +1,6 @@
 /**
  * Smoke test: builds the dist tree, installs it into a scratch pi agent
- * directory with the pinned pi CLI, and checks that both extensions load.
+ * directory with the pinned pi CLI, and checks that every patched extension loads.
  *
  * Run by `verify.yml` and `release.yml`; exits non-zero on any failure.
  */
@@ -156,8 +156,9 @@ async function checkPatchEffects(
 }
 
 /**
- * Runs the patched `pi-auto-continue` reset parser on messages seen in real
- * logs (a tilde before the hours, a compact `1h30m`).
+ * Guards the patched `pi-auto-continue` reset parser: it must accept a `~`
+ * prefix and compact durations, and must stay linear on long whitespace runs.
+ * Throws (non-zero child exit) when a case fails.
  * @param outDir Dist directory
  */
 function checkResetParse(outDir: string): void {
@@ -170,6 +171,10 @@ function checkResetParse(outDir: string): void {
       ['Resets in ~2.5h.', 2.5],
       ['try again in 1h30m', 1.5],
     ]
+    const started = Date.now()
+    if (parseErrorBodyReset('in' + ' '.repeat(50000) + 'x', 'p', Date.now()) !== null || Date.now() - started > 1000) {
+      throw new Error('reset parse is not linear on whitespace runs')
+    }
     for (const [text, hours] of cases) {
       const info = parseErrorBodyReset(text, 'p', Date.now())
       const actual = info ? (info.resetsAt.getTime() - Date.now()) / 3600000 : null

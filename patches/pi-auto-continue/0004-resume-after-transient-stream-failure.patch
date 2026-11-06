@@ -1,5 +1,5 @@
 diff --git a/src/index.ts b/src/index.ts
-index 2c36413..b1e65c9 100644
+index 0c0603f..160de3f 100644
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -26,7 +26,7 @@ import {
@@ -27,15 +27,16 @@ index 2c36413..b1e65c9 100644
  	headers?: Record<string, string>;
  	errorMessage?: string;
  }
-@@ -82,6 +87,7 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
- 	let lastThresholdCheck = 0;
- 	/** Consecutive auto-mode resumes that did not clear the rate limit. */
+@@ -84,6 +89,8 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
  	let autoResumeCount = 0;
+ 	/** Epoch ms at which the last auto-mode wait ends, so limit errors arriving during it are not counted as failed retries. */
+ 	let lastAutoWaitEndMs = 0;
++	/** Consecutive transient provider failures resumed automatically. */
 +	let transientResumeCount = 0;
  	let scheduler: WaitScheduler;
  	const pendingStore = new SessionWaitStore();
  	let boundSessionFile: string | undefined;
-@@ -725,6 +731,7 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+@@ -739,6 +746,7 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
  	pi.on("agent_start", () => {
  		evidence.rateLimited = false;
  		evidence.runErrored = false;
@@ -43,7 +44,7 @@ index 2c36413..b1e65c9 100644
  		evidence.headers = undefined;
  		evidence.errorMessage = undefined;
  	});
-@@ -744,6 +751,7 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+@@ -758,6 +766,7 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
  		const errorMessage = typeof message["errorMessage"] === "string" ? message["errorMessage"] : "";
  		evidence.errorMessage = errorMessage;
  		if (isRateLimitError(errorMessage)) evidence.rateLimited = true;
@@ -51,7 +52,7 @@ index 2c36413..b1e65c9 100644
  	});
  
  	/**
-@@ -785,6 +793,22 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+@@ -799,6 +808,23 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
  			await handleUsageLimit(ctx);
  			return;
  		}
@@ -59,7 +60,8 @@ index 2c36413..b1e65c9 100644
 +			evidence.transient = false;
 +			evidence.runErrored = false;
 +			transientResumeCount += 1;
-+			if (transientResumeCount <= MAX_TRANSIENT_RESUMES && safeHasUi(ctx)) {
++			// Only in auto mode (the user opted into unattended resumes), and never replacing a wait that is already armed.
++			if (transientResumeCount <= MAX_TRANSIENT_RESUMES && config.autoMode === "auto" && !scheduler.current && safeHasUi(ctx)) {
 +				logDebug(`transient provider failure: resuming in ${formatRemainingTime(TRANSIENT_RESUME_DELAY_MS)} (${transientResumeCount}/${MAX_TRANSIENT_RESUMES})`);
 +				await armWait(ctx, {
 +					strategy: "inplace",
@@ -75,10 +77,10 @@ index 2c36413..b1e65c9 100644
  		// auto-resume loop guard can start over.
  		autoResumeCount = 0;
 diff --git a/src/reset-parse.ts b/src/reset-parse.ts
-index 4c8a8a3..1164470 100644
+index 9827522..9b661d1 100644
 --- a/src/reset-parse.ts
 +++ b/src/reset-parse.ts
-@@ -259,6 +259,17 @@ const RATE_LIMIT_PATTERNS: RegExp[] = [
+@@ -260,6 +260,17 @@ const RATE_LIMIT_PATTERNS: RegExp[] = [
  	/(?:^|[^0-9])429(?![0-9])/,
  ];
  
