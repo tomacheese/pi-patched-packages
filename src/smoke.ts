@@ -287,6 +287,34 @@ function checkGoalHelpers(outDir: string): void {
 }
 
 /**
+ * Checks that the pi-codex-native patches landed. The provider imports pi-ai at load time, so the
+ * sources are only inspected for markers here. Throws when a marker is missing.
+ * @param outDir Dist directory
+ */
+async function checkCodexNativePatches(outDir: string): Promise<void> {
+  const src = path.join(
+    outDir,
+    'packages',
+    'pi-codex-native',
+    'src',
+    'provider'
+  )
+  const markers: [string, string[]][] = [
+    ['stream-events.ts', ['describeTerminalLimit', '"token_revoked"']],
+    ['diagnostic-failure.ts', ['token_revoked']],
+    ['transport-recovery.ts', ['Last error:']],
+  ]
+  for (const [file, needles] of markers) {
+    const text = await fs.readFile(path.join(src, file), 'utf8')
+    for (const needle of needles) {
+      if (!text.includes(needle))
+        throw new Error(`pi-codex-native ${file} lacks ${needle}`)
+    }
+  }
+  console.log('codex native patches: ok')
+}
+
+/**
  * Guards the patched `pi-loop-monitor` (compiled JavaScript, so a patch cannot be
  * type-checked): the files must still parse and carry the patched behavior.
  * Throws when a marker is missing.
@@ -365,6 +393,7 @@ async function main(): Promise<void> {
     checkResetParse(outDir)
     checkGoalHelpers(outDir)
     await checkLoopMonitorPatches(outDir)
+    await checkCodexNativePatches(outDir)
     const checked = await checkPatchEffects(repoRoot, outDir)
     console.log(`patch effects: ${String(checked)} file(s) verified`)
   } finally {

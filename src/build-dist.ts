@@ -18,7 +18,11 @@ export const PACKAGES = [
   'pi-better-goal',
   'pi-better-subagents',
   'pi-loop-monitor',
+  'pi-codex-native',
 ] as const
+
+/** Packages that declare bundledDependencies: their own `node_modules` is part of the package and is copied as is. */
+const BUNDLES_NODE_MODULES: ReadonlySet<string> = new Set(['pi-codex-native'])
 
 /** Error raised when the build cannot produce a valid tree. */
 export class BuildError extends Error {
@@ -144,15 +148,21 @@ async function resolveInstalledVersion(
 }
 
 /**
- * Copies a package directory, dereferencing symlinks and skipping nested `node_modules`.
+ * Copies a package directory, dereferencing symlinks. Nested `node_modules` is skipped unless the
+ * package bundles its dependencies.
  * @param source Real source directory
  * @param destination Destination directory
+ * @param keepNodeModules Whether to copy `node_modules` directories (bundledDependencies packages)
  */
-async function copyPackage(source: string, destination: string): Promise<void> {
+async function copyPackage(
+  source: string,
+  destination: string,
+  keepNodeModules: boolean
+): Promise<void> {
   await fs.cp(source, destination, {
     recursive: true,
     dereference: true,
-    filter: (item) => path.basename(item) !== 'node_modules',
+    filter: (item) => keepNodeModules || path.basename(item) !== 'node_modules',
   })
 }
 
@@ -329,7 +339,7 @@ export async function buildDist(
     }
     const realDir = await fs.realpath(link)
     const destination = path.join(outDir, 'packages', name)
-    await copyPackage(realDir, destination)
+    await copyPackage(realDir, destination, BUNDLES_NODE_MODULES.has(name))
 
     const manifest = await readJson(path.join(destination, 'package.json'))
     const version = manifest.version as string
@@ -346,7 +356,19 @@ export async function buildDist(
     const declaredNames = Object.keys(declared).toSorted((a, b) =>
       a.localeCompare(b)
     )
+    // Bundled dependencies ship inside the package's own node_modules; the root must not reinstall them.
+    const bundledField =
+      patchedManifest.bundledDependencies ??
+      patchedManifest.bundleDependencies ??
+      []
+    if (!Array.isArray(bundledField)) {
+      throw new BuildError(
+        `${name}: bundledDependencies must be an array of names`
+      )
+    }
+    const bundled = new Set(bundledField as string[])
     for (const dependency of declaredNames) {
+      if (bundled.has(dependency)) continue
       const installed = await resolveInstalledVersion(realDir, dependency)
       const previous = dependencies.get(dependency)
       if (previous && previous.version !== installed) {

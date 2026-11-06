@@ -8,6 +8,7 @@ Currently patched (`pi-better-*` from [1aboveio/pi-better-harness](https://githu
 |---|---|---|
 | `pi-auto-continue` | see `package.json` | `patches/pi-auto-continue/` |
 | `pi-loop-monitor` | see `package.json` | `patches/pi-loop-monitor/` |
+| `pi-codex-native` | see `package.json` | `patches/pi-codex-native/` |
 | `pi-better-goal` | see `package.json` | `patches/pi-better-goal/` |
 | `pi-better-subagents` | see `package.json` | `patches/pi-better-subagents/` |
 

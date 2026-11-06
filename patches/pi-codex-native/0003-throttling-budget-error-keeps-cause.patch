@@ -1,0 +1,15 @@
+diff --git a/src/provider/transport-recovery.ts b/src/provider/transport-recovery.ts
+index 9e5b8ca..8fd043a 100644
+--- a/src/provider/transport-recovery.ts
++++ b/src/provider/transport-recovery.ts
+@@ -176,8 +176,9 @@ function rateLimitRecoveryBudgetError(error: unknown): NonRetryableProviderError
+ 		requestedDelayMs === undefined
+ 			? ""
+ 			: ` Provider requested a wait of ${Math.ceil(requestedDelayMs / 1000)} seconds.`;
++	const cause = error instanceof Error && error.message ? ` Last error: ${error.message.slice(0, 300)}` : "";
+ 	return new NonRetryableProviderError(
+-		`Codex throttling exceeded the three-minute automatic recovery window.${detail}`,
++		`Codex throttling exceeded the three-minute automatic recovery window.${detail}${cause}`,
+ 	);
+ }
+ 

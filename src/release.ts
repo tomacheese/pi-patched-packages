@@ -16,7 +16,18 @@ import path from 'node:path'
 import type { BuiltPackage } from './build-dist'
 
 /** Names that are never part of the published tree. */
-const EXCLUDED_NAMES = new Set(['node_modules', 'package-lock.json', '.git'])
+const EXCLUDED_NAMES = new Set(['package-lock.json', '.git'])
+
+/**
+ * Whether a path inside a tree is the tree's own installed `node_modules`.
+ * Only the root one is never published: a package that bundles its dependencies
+ * (for example `packages/<name>/node_modules`) must keep them.
+ * @param relative Path relative to the tree root
+ * @returns True for the root `node_modules`
+ */
+function isRootNodeModules(relative: string): boolean {
+  return relative === 'node_modules'
+}
 
 /** Author used for the release commits (GitHub Actions bot). */
 const BOT_IDENTITY = [
@@ -195,6 +206,7 @@ export async function hashTree(root: string): Promise<Map<string, string>> {
     for (const entry of entries) {
       if (EXCLUDED_NAMES.has(entry.name)) continue
       const full = path.join(dir, entry.name)
+      if (isRootNodeModules(path.relative(root, full))) continue
       if (entry.isDirectory()) {
         await walk(full)
       } else {
@@ -246,7 +258,9 @@ function git(cwd: string, args: readonly string[]): string {
 async function copyTree(source: string, destination: string): Promise<void> {
   await fs.cp(source, destination, {
     recursive: true,
-    filter: (item) => !EXCLUDED_NAMES.has(path.basename(item)),
+    filter: (item) =>
+      !EXCLUDED_NAMES.has(path.basename(item)) &&
+      !isRootNodeModules(path.relative(source, item)),
   })
 }
 
