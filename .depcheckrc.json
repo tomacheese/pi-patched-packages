@@ -5,6 +5,7 @@
     "eslint-plugin-n",
     "eslint-plugin-promise",
     "@earendil-works/pi-coding-agent",
+    "pi-auto-continue",
     "pi-better-goal",
     "pi-better-subagents"
   ]

@@ -13,7 +13,11 @@ import * as fs from 'node:fs/promises'
 import path from 'node:path'
 
 /** Upstream packages that are patched and published together. */
-export const PACKAGES = ['pi-better-goal', 'pi-better-subagents'] as const
+export const PACKAGES = [
+  'pi-auto-continue',
+  'pi-better-goal',
+  'pi-better-subagents',
+] as const
 
 /** Error raised when the build cannot produce a valid tree. */
 export class BuildError extends Error {
