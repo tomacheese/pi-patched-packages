@@ -1,0 +1,64 @@
+{
+  "name": "pi-codex-native",
+  "version": "0.3.13",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luan/agents.git",
+    "directory": "harnesses/pi/agent/packages/pi-codex-native"
+  },
+  "description": "Headless Codex provider capabilities for pi",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./context-window": "./src/protocol/context-window.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./src/extension.ts",
+      "./node_modules/@luan.sh/pi-libtui/src/extension.ts"
+    ],
+    "image": "https://pi.luan.sh/media/previews/pi-codex-native-695375265293.png",
+    "video": "https://pi.luan.sh/media/previews/pi-codex-native-38742cb8baf1.mp4"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=1.0.0",
+    "@earendil-works/pi-agent-core": ">=1.0.0",
+    "@earendil-works/pi-coding-agent": ">=1.0.0",
+    "@earendil-works/pi-tui": ">=1.0.0",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "@luan.sh/pi-developer-messages": "file:../pi-developer-messages",
+    "partial-json": "^0.1.7",
+    "@luan.sh/pi-libactions": "file:../pi-libactions",
+    "@luan.sh/pi-libtui": "file:../pi-libtui",
+    "@luan.sh/pi-xsettings": "file:../pi-xsettings",
+    "proxy-from-env": "^2.1.0",
+    "undici": "^8.10.0"
+  },
+  "bundledDependencies": [
+    "@luan.sh/pi-libactions",
+    "@luan.sh/pi-libtui",
+    "@luan.sh/pi-xsettings",
+    "@luan.sh/pi-developer-messages"
+  ],
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "1.0.0",
+    "@earendil-works/pi-ai": "1.0.0",
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@earendil-works/pi-tui": "1.0.0",
+    "@types/bun": "^1.3.0",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "typecheck": "tsc --build",
+    "test": "bun test --only-failures test"
+  },
+  "publishAliases": [
+    "pi-codex-native"
+  ]
+}

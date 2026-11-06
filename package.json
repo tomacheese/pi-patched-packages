@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "partial-json": "0.1.7",
     "proper-lockfile": "4.1.2",
+    "proxy-from-env": "2.1.0",
     "shell-quote": "1.12.0",
     "smol-toml": "1.9.0",
     "tsx": "4.23.15",
+    "undici": "8.12.3",
     "yaml": "2.9.1"
   },
   "pi": {
@@ -15,7 +18,9 @@
       "./packages/pi-auto-continue/src/index.ts",
       "./packages/pi-better-goal/src/index.ts",
       "./packages/pi-better-subagents/index.ts",
-      "./packages/pi-loop-monitor/dist/index.js"
+      "./packages/pi-loop-monitor/dist/index.js",
+      "./packages/pi-codex-native/src/extension.ts",
+      "./packages/pi-codex-native/node_modules/@luan.sh/pi-libtui/src/extension.ts"
     ]
   }
 }

@@ -58,3 +58,13 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 - file: dist/runtime/notification-runtime.js sha256:2b201ca1f158872789c3af7657df3ee1417b08d40201d0f73276ea35ca88c43d
 - file: dist/tools/loop-tools.js sha256:a5cb492b01c1bf9c1e23fb5c306a5d97ec45839c36c3642eaee43c9453b8cf2c
 - file: dist/tools/monitor-tools.js sha256:f5be551003eb9d10cb05c57638d4be97d9a0cdfaf4b4ece89192a97f83d4c6c1
+
+## pi-codex-native
+
+- upstream: 0.3.13
+- patch: 0001-terminal-limit-message-from-event-payload.patch sha256:835ea3c8e65081989a0da17c0bd87008ad96cbc110ce80019a87a9bbe3d1b6fb
+- patch: 0002-classify-token-revoked-as-authentication.patch sha256:5372f4e1ecd8122efc33b1b742395b8c9804fb99c2ef9a75ac53f63b666e8f33
+- patch: 0003-throttling-budget-error-keeps-cause.patch sha256:9d697ae8a4151a00b04332e53a8c92ce88638da980a7df2e55cdc08b4646c9c2
+- file: src/provider/diagnostic-failure.ts sha256:6d46741df199ac5c7fdc2ec634b4139067c2907cf27d31799fa2b763b2130cfd
+- file: src/provider/stream-events.ts sha256:e4992e87c6e24f2f656eff496a1af5668131e4ac1be6dd880ed448e2bf59abca
+- file: src/provider/transport-recovery.ts sha256:8a83af89317105375d75e644d1d836a8754604087c9d496e1619b5a4d32e9a4a
