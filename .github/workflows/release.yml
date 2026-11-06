@@ -45,8 +45,11 @@ jobs:
         run: pnpm smoke
 
       - name: Publish dist
+        # Authenticate git here only (same header actions/checkout would persist).
         run: |
-          git config http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          credential="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$credential"
+          git config http.https://github.com/.extraheader "AUTHORIZATION: basic $credential"
           pnpm release
         env:
           GH_TOKEN: ${{ github.token }}
