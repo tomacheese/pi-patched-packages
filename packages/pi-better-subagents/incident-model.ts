@@ -88,6 +88,10 @@ export interface IncidentModel {
     operationIds: Map<string, string>;
     /** Current unresolved incident per operation, for exact retry recovery. */
     failed: Map<string, { id: string; sequence: number }>;
+    /** Successful file edits so far: a bash failure repeated after an edit is a new attempt, not a stuck retry. */
+    epoch: number;
+    /** Every incident filed for a command (base operation → incident and the group it was filed under), resolved together on recovery. */
+    groups: Map<string, { id: string; operation: string }[]>;
     /** Incident → last failure sequence, for ordering evidence. */
     incidentSequence: Map<string, number>;
     /** Disposition requests resolved at their start position (parent) or execute time (child). */
@@ -100,7 +104,7 @@ export interface IncidentModel {
  */
 export function newIncidentModel(structuredIntent = false, runId?: string): IncidentModel {
     return { structuredIntent, ...(runId ? { runId } : {}), sequence: 0, open: new Map(), finished: new Map(), attemptIds: new Map(), namedAttempts: new Set(), operationIds: new Map(),
-        failed: new Map(), incidentSequence: new Map(), pendingDispositions: new Map() };
+        failed: new Map(), epoch: 0, groups: new Map(), incidentSequence: new Map(), pendingDispositions: new Map() };
 }
 export interface IncidentSink {
     /** Reduce/journal ordinary observations; returns the resulting state. */
@@ -285,6 +289,37 @@ function preRunRefusal(model: IncidentModel, attempt: Attempt | undefined, toolN
     return undefined;
 }
 
+/** Compact renders cap a summary at this many UTF-8 bytes; the output tail must survive that cap. */
+const BASH_SUMMARY_BYTES = 120;
+
+/**
+ * A bash failure summary that survives the compact render: exit code, command head and the output tail.
+ * Test runners and linters print their verdict last, so the head (progress dots) says nothing.
+ * Assignments and bearer tokens in the command head are masked: the summary is shown to other agents.
+ */
+function bashFailureSummary(row: any, fallback: string): string {
+    const text = row.result?.content?.find?.((x: any) => x?.type === "text")?.text;
+    if (typeof text !== "string") return fallback;
+    const clean = (value: string): string => value.replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").trim();
+    const exited = /\n*Command exited with code (\d+)\s*$/.exec(text);
+    const body = exited ? text.slice(0, exited.index) : text;
+    let tail = clean(body.split("\n").map(clean).filter(Boolean).at(-1) ?? "");
+    const code = exited ? exited[1] : String(row.result?.details?.exitCode ?? "?");
+    const command = typeof row.args?.command === "string"
+        ? clean(row.args.command).replace(/\b([A-Za-z_][A-Za-z0-9_]*=)\S+/g, "$1…").replace(/\b(Bearer|Basic)\s+\S+/gi, "$1 …").slice(0, 40)
+        : "";
+    const head = `bash exit ${code}${command ? ` · ${command}` : ""}`;
+    // Keep the end of the tail within the byte budget (multibyte text is wider than its length).
+    const budget = BASH_SUMMARY_BYTES - Buffer.byteLength(head) - 3;
+    while (tail && Buffer.byteLength(tail) > budget) tail = tail.slice(1);
+    return tail && budget > 0 ? `${head} → ${tail}` : head;
+}
+
+/** Distinct incidents of one command after which the per-edit split stops, so a stuck loop still reaches the repeat threshold. */
+const EPOCH_FAILURE_CAP = 5;
+/** Tools whose success means the child changed files; each one starts a new failure epoch. */
+const EDIT_TOOLS = new Set(["edit", "write", "apply_patch"]);
+
 /** Fold one tool execution end: failures, declared expected exits, exact retry recovery, dispositions. */
 export function foldToolEnd(model: IncidentModel, row: any, cwd: string, evidence: string, sink: IncidentSink): void {
     const toolCallId = String(row.toolCallId);
@@ -321,23 +356,36 @@ export function foldToolEnd(model: IncidentModel, row: any, cwd: string, evidenc
     }
     if (declaredExit !== undefined || error) {
         const failureId = `tool:${toolCallId}`;
+        // A command that fails again after the child edited files is a new attempt of a fix loop, so it
+        // starts a new group instead of reaching the repeat threshold; the cap keeps a real stuck loop visible.
+        const failedBefore = model.groups.get(operation)?.length ?? 0;
+        const groupOperation = toolName === "bash" && model.epoch > 0 && failedBefore < EPOCH_FAILURE_CAP ? `${operation}#e${String(model.epoch)}` : operation;
         const event: FailureEvent = declaredExit !== undefined
             ? { id: failureId, operation, kind: "failure", at: time(row), category: "tool", expected: true, evidence,
                 summary: `${toolName} exited with declared expected code ${declaredExit}` }
-            : { id: failureId, operation, kind: "failure", at: time(row), category: "tool", evidence,
-                summary: `${toolName} failed: ${error!.slice(0, 180)}`, expected: row.expected === true || row.result?.expected === true };
+            : { id: failureId, operation: groupOperation, kind: "failure", at: time(row), category: "tool", evidence,
+                summary: toolName === "bash" ? bashFailureSummary(row, `${toolName} failed: ${error!.slice(0, 180)}`) : `${toolName} failed: ${error!.slice(0, 180)}`, expected: row.expected === true || row.result?.expected === true };
         const state = sink.observe([event]);
-        const incident = state.observations[failureIdentity(operation)]?.id ?? failureId;
+        const incident = state.observations[failureIdentity(event.operation)]?.id ?? failureId;
         finished.incident = incident;
         model.incidentSequence.set(incident, seq);
+        const filed = model.groups.get(operation) ?? [];
+        if (!filed.some((x) => x.id === incident)) model.groups.set(operation, [...filed, { id: incident, operation: event.operation }]);
         model.failed.set(operation, { id: incident, sequence: seq });
         return;
     }
+    if (EDIT_TOOLS.has(toolName)) model.epoch += 1;
     if (attempt) {
         const failed = model.failed.get(operation);
         if (failed && attempt.startSequence > failed.sequence) {
-            sink.observe([{ id: `recovered:${toolCallId}`, operation, kind: "recovered", at: time(row), incidents: [failed.id] }]);
+            // The reducer resolves an incident through the identity of its own group, so recover each group.
+            const filed = model.groups.get(operation) ?? [{ id: failed.id, operation }];
+            const byGroup = new Map<string, string[]>();
+            for (const x of filed) byGroup.set(x.operation, [...(byGroup.get(x.operation) ?? []), x.id]);
+            sink.observe([...byGroup].map(([groupOperation, incidents], index) => ({ id: `recovered:${toolCallId}:${String(index)}`,
+                operation: groupOperation, kind: "recovered" as const, at: time(row), incidents })));
             model.failed.delete(operation);
+            model.groups.delete(operation);
         }
     }
 }

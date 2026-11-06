@@ -1,8 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parse } from "shell-quote";
 import { STEER_FILE_ENV } from "./child-steer.ts";
+import { supportsPromptSections } from "./shared-execution-policy.ts";
 
-export const WORKER_HANDOFF = "Worker ownership: complete your assigned implementation or diagnosis, run focused checks, push only when authorized, write the requested result, then return. Pending CI is a handoff, not a failed implementation or a CI pass. The coordinator owns CI/PR monitoring, review scheduling, readiness, enqueueing and merge. Do not start external delivery watchers or background monitoring. Short status reads and failed-log retrieval for diagnosis are allowed. Legitimate local tests and builds may run to completion within their command limits.";
+export const WORKER_HANDOFF = "Worker ownership: complete your assigned implementation or diagnosis, run focused checks, push only when authorized, write the requested result, then return. Pending CI is a handoff, not a failed implementation or a CI pass. The coordinator owns CI/PR monitoring, review scheduling, readiness, enqueueing and merge. Do not start external delivery watchers or background monitoring. Short status reads and failed-log retrieval for diagnosis are allowed. Legitimate local tests and builds may run to completion within their command limits. Use Bash for short diagnostic commands and focused checks needed to implement the change. When supervised background tools are available, retain ownership of assigned validation: launch a known long command with bg_task_spawn or repeated observation with bg_task_watch, continue independent work, then call wait_for_operations to park when no independent work remains. On continuation, inspect the operation's terminal evidence and acknowledge its interpretation before continuing the assignment. Parking is a saved-conversation dependency, not a request for the parent model to relay commands or results. An explicit restricted tool loadout may omit background support; return the exact command, cwd, required environment variable names (never secret values), current evidence and remaining validation to the coordinator. Do not emulate background execution with polling, sleep loops, nohup or shell detachment. Established command-only operations and external delivery monitoring belong to the coordinator's background tools.";
+export const WORKER_HANDOFF_SECTION = "worker_handoff";
 const REFUSAL = "Worker ownership: CI/PR monitoring belongs to the coordinator. Return the PR/run ID, pushed HEAD and current evidence with CI pending; do not retry the watcher through another tool or script. Local tests/builds and short diagnostic status/log reads remain allowed.";
 const WATCH_SCRIPTS = new Set(["watch-pr-delivery.mjs", "watch-delivery.mjs", "watch-candidate-delivery.mjs"]);
 const nameOf = (value: string) => value.replaceAll("\\", "/").split("/").at(-1)!.replace(/\.exe$/i, "");
@@ -113,6 +115,17 @@ export function workerMonitoringRefusal(toolName: string, input: unknown): strin
         (value.args === undefined || (Array.isArray(value.args) && value.args.every((arg) => typeof arg === "string")))
         ? [value.executable, ...((value.args ?? []) as string[])] : undefined;
     if (argv && argvWatcher(argv)) return REFUSAL;
+    // A batch carries no shared command or argv, so every job has to be inspected
+    // on its own; otherwise one job can run a monitor past this refusal.
+    if (toolName === "bg_task_spawn_batch") {
+        for (const job of Array.isArray(value.jobs) ? value.jobs : []) {
+            if (!job || typeof job !== "object") continue;
+            const entry = job as Record<string, unknown>;
+            if (typeof entry.command === "string" && shellWatcher(entry.command, 0)) return REFUSAL;
+            if (Array.isArray(entry.argv) && entry.argv.every((arg) => typeof arg === "string") && argvWatcher(entry.argv)) return REFUSAL;
+        }
+        return;
+    }
     if (["bash", "remote_bash", "bg_task", "bg_task_spawn", "bg_task_watch"].includes(toolName)) {
         if (typeof value.command === "string" && shellWatcher(value.command, 0)) return REFUSAL;
         if (Array.isArray(value.argv) && value.argv.every((arg) => typeof arg === "string") && argvWatcher(value.argv)) return REFUSAL;
@@ -122,7 +135,18 @@ export function workerMonitoringRefusal(toolName: string, input: unknown): strin
 export default function childOwnership(pi: Pick<ExtensionAPI, "on">, env: NodeJS.ProcessEnv = process.env): void {
     // This marker is supplied by the parent on every child launch, including clean/unsandboxed runs.
     if (!env[STEER_FILE_ENV]) return;
-    pi.on("before_agent_start", (event) => ({ systemPrompt: `${event.systemPrompt}\n\n${WORKER_HANDOFF}` }));
+    // A section on hosts that render them; appended text on hosts that do not.
+    // Returning a prompt on a modern host would set forceSystemPrompt, and the
+    // request would carry a snapshot, so later sections never arrive.
+    pi.on("before_agent_start", (event) => {
+        if (!supportsPromptSections(event.systemPromptOptions)) {
+            return { systemPrompt: `${event.systemPrompt}\n\n${WORKER_HANDOFF}` };
+        }
+        const options = event.systemPromptOptions as { sections?: Record<string, string> };
+        const sections = (options.sections ??= {});
+        sections[WORKER_HANDOFF_SECTION] = WORKER_HANDOFF;
+        return undefined;
+    });
     pi.on("tool_call", (event) => {
         const reason = workerMonitoringRefusal(event.toolName, event.input);
         if (reason) return { block: true, reason };
