@@ -1,0 +1,99 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { GoalCommandBinding } from "./command-binding.js";
+
+export const EXTENSION_NAME = "pi-better-goal";
+export const EXTENSION_VERSION = "0.1.0";
+
+export const EVENT_READY = "pi-better-goal:ready";
+export const EVENT_REGISTER_PROVIDER = "pi-better-goal:register-provider";
+export const EVENT_ACTIVITY = "pi-better-goal:activity";
+export const EVENT_TERMINAL_ATTENTION = "pi-better-goal:terminal-attention";
+
+export type ActivityCategory =
+  | "foreground-running"
+  | "background-running"
+  | "idle-waiting"
+  | "complete";
+
+export type BackgroundWorkStatus =
+  | "running"
+  | "orphaned"
+  | "completed"
+  | "failed"
+  | "killed"
+  | "lost"
+  | "exited"
+  | string;
+
+export interface BackgroundWorkItem {
+  id: string;
+  label?: string;
+  status: BackgroundWorkStatus;
+  active: boolean;
+  unhealthy?: boolean;
+  terminal?: boolean;
+  attention?: boolean;
+  startedAt?: number;
+  endedAt?: number;
+  details?: Record<string, unknown>;
+}
+
+export interface BackgroundProviderSnapshot {
+  providerId: string;
+  label?: string;
+  items: BackgroundWorkItem[];
+}
+
+export interface BackgroundActivityProvider {
+  id: string;
+  label?: string;
+  getActivity(ctx: ExtensionContext): BackgroundProviderSnapshot | Promise<BackgroundProviderSnapshot>;
+  onActivityChanged?(notify: () => void): () => void;
+}
+
+export interface ActivitySnapshot {
+  version: 1;
+  category: ActivityCategory;
+  foregroundRunning: boolean;
+  backgroundRunning: boolean;
+  activeBackgroundCount: number;
+  unhealthyBackgroundCount: number;
+  terminalAttentionCount: number;
+  providers: BackgroundProviderSnapshot[];
+  generatedAt: number;
+}
+
+export type GoalStatus = "active" | "paused" | "budgetLimited" | "complete";
+
+/**
+ * Why a paused goal is paused. `interrupt` marks a pause from escape (or any
+ * other abort of the running turn). Every pause is sticky: user messages never
+ * resume a goal on their own. An `interrupt` pause may be resumed by the agent
+ * with `goal_resume` when the user clearly says to proceed. A paused goal
+ * without a reason (`/goal pause`, an unavailable command or workflow) resumes
+ * only through `/goal resume` or the resume hotkey. `permission-blocker` also
+ * requires those human controls, and releases just one same-scope retry while
+ * keeping its separate blocker/release history.
+ */
+/** Why a goal paused: escape, a permission hold, or a workflow handing back unfinished work for the user's answer. */
+export type GoalPauseReason = "interrupt" | "permission-blocker" | "handback";
+
+export interface GoalUsage {
+  tokensUsed: number;
+  activeSeconds: number;
+}
+
+export interface GoalSnapshot {
+  goalId: string;
+  objective: string;
+  command?: GoalCommandBinding;
+  status: GoalStatus;
+  /** Present only while `status` is "paused". */
+  pauseReason?: GoalPauseReason;
+  tokenBudget: number | null;
+  usage: GoalUsage;
+  createdAt: number;
+  updatedAt: number;
+  activeStartedAt: number | null;
+  completedAt: number | null;
+}
