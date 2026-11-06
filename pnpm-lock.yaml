@@ -200,8 +200,8 @@ importers:
         specifier: 1.1.3
         version: 1.1.3
       pi-better-goal:
-        specifier: 0.8.4
-        version: 0.8.4(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
+        specifier: 0.9.0
+        version: 0.9.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
       pi-better-subagents:
         specifier: 0.18.0
         version: 0.18.0(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)
@@ -2844,8 +2844,8 @@ packages:
     resolution: {integrity: sha512-T6hvS1bc/rXh4fA7jWOAteq5/c2kkz4QFRmGY9dER1ncqBDNwwWRD3h43ruiRr3YK5zHNqVrqfo2XUEqRo4gdQ==}
     engines: {node: ^22.13.0 || >=24.0.0, typescript: '>=5.9'}
 
-  pi-better-goal@0.8.4:
-    resolution: {integrity: sha512-hYcVL6YO49ySKATrTqeQu/MkfOwXyseeOiOHXHI97kVyO42HIvqeNX7+gIPxn2bN5OITHwGGMjVpXhv3W6TBCQ==}
+  pi-better-goal@0.9.0:
+    resolution: {integrity: sha512-OMxukItEAI3SdPJ/vSwnDP2WUV5zCEP6p+Zn6qC/dbpqJmnSw8Qfgf7jqYUhFUjPJR0XvUQ1ttarykE/wS6hVQ==}
     engines: {node: '>=22.0.0'}
     peerDependencies:
       '@earendil-works/pi-coding-agent': '>=0.84.4'
@@ -6618,7 +6618,7 @@ snapshots:
 
   peowly@2.0.1: {}
 
-  pi-better-goal@0.8.4(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27):
+  pi-better-goal@0.9.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27):
     dependencies:
       proper-lockfile: 4.1.2
       yaml: 2.9.1
