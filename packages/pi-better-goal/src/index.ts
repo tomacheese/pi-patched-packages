@@ -150,6 +150,22 @@ export function idleContinuationDelay(noProgressRetries: number, baseMs = IDLE_C
   return Math.min(MAX_TIMER_DELAY_MS, baseMs * (1 + Math.max(0, noProgressRetries)));
 }
 
+/** Longest wait between continuations while the provider keeps reporting a limit. */
+const PROVIDER_LIMIT_MAX_DELAY_MS = 30 * 60_000;
+
+/**
+ * Exponential backoff while the provider reports a usage limit: the first
+ * limited run waits one base period, then twice as long each time, capped at 30
+ * minutes (or the base period when that is longer).
+ * @param consecutiveFailures Limited runs in a row, counting the latest one
+ * @param baseMs First wait
+ */
+export function providerLimitDelay(consecutiveFailures: number, baseMs = IDLE_CONTINUATION_DELAY_MS): number {
+  const doublings = Math.min(Math.max(0, consecutiveFailures - 1), 30);
+  const cap = Math.min(MAX_TIMER_DELAY_MS, Math.max(PROVIDER_LIMIT_MAX_DELAY_MS, baseMs));
+  return Math.min(cap, baseMs * 2 ** doublings);
+}
+
 function parseRetryLimit(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw.trim() === "") {
     return fallback;
@@ -174,6 +190,37 @@ function wasTurnAborted(messages: readonly unknown[]): boolean {
       continue;
     }
     return candidate.stopReason === "aborted";
+  }
+  return false;
+}
+
+/**
+ * True when an error message reports a usage, rate or quota limit (for example
+ * "Codex error: The usage limit has been reached", HTTP 429, "overloaded").
+ * Other provider errors, such as a network failure, are not limits.
+ */
+export function isProviderLimitMessage(message: unknown): boolean {
+  return typeof message === "string" &&
+    /usage[ _-]?limit|rate[ _-]?limit|quota|too many requests|\b429\b|overloaded/i.test(message);
+}
+
+/**
+ * True when the agent loop ended because the provider reported a limit: the
+ * final assistant message has stopReason "error" and an errorMessage that names
+ * a limit. Such a run is not evidence of progress or of its absence, so it must
+ * not be counted as no progress.
+ */
+function endedWithProviderLimit(messages: readonly unknown[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+    const candidate = message as { role?: unknown; stopReason?: unknown; errorMessage?: unknown };
+    if (candidate.role !== "assistant") {
+      continue;
+    }
+    return candidate.stopReason === "error" && isProviderLimitMessage(candidate.errorMessage);
   }
   return false;
 }
@@ -328,6 +375,8 @@ export default function (pi: ExtensionAPI): void {
   let terminalInputIsEditor: (() => boolean) | undefined;
   let uiPromptDepth = 0;
   let lastAgentEvidence: ContinuationEvidence | null = null;
+  // Consecutive runs that ended on a provider limit (in memory only); any other run resets it.
+  let providerLimitStreak = 0;
   let preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true };
   // Keep the audit trail. The opt-out only changes which reports can force a Goal hold.
   const currentPermissionHold = (ctx: ExtensionContext, goalId: string): PermissionHold => {
@@ -404,6 +453,7 @@ export default function (pi: ExtensionAPI): void {
     }
     executionGeneration += 1;
     lastAgentEvidence = null;
+    providerLimitStreak = 0;
     const previous = getGoal(ctx);
     const wasVisible = previous !== null && isGoalClockVisible(previous);
     pi.appendEntry(EXTENSION_NAME, goalSetEntry(goal, source));
@@ -420,6 +470,7 @@ export default function (pi: ExtensionAPI): void {
   const clearGoal = (ctx: ExtensionContext, source: GoalEntrySource): void => {
     executionGeneration += 1;
     lastAgentEvidence = null;
+    providerLimitStreak = 0;
     const current = getGoal(ctx);
     const wasVisible = current !== null && isGoalClockVisible(current);
     pi.appendEntry(EXTENSION_NAME, goalClearEntry(current?.goalId ?? null, source));
@@ -593,7 +644,9 @@ export default function (pi: ExtensionAPI): void {
       idleContinuationTimer = undefined;
       idleContinuationSignature = "";
       void sendIdleContinuationAfterAudit(goal.goalId, ctx, kind, snapshot);
-    }, idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0));
+    }, kind === "continuation" && providerLimitStreak > 0
+      ? providerLimitDelay(providerLimitStreak)
+      : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0));
     idleContinuationTimer.unref?.();
   };
 
@@ -1368,7 +1421,12 @@ export default function (pi: ExtensionAPI): void {
   });
 
   pi.on("agent_end", async (event, ctx) => {
-    lastAgentEvidence = agentGeneration === executionGeneration ? continuationEvidence(event.messages) : null;
+    const currentRun = agentGeneration === executionGeneration;
+    // A provider limit (usage or rate limit) produced no work to judge: it
+    // records no evidence, so the no-progress counter is neither advanced nor reset.
+    const limited = currentRun && endedWithProviderLimit(event.messages);
+    if (currentRun) providerLimitStreak = limited ? providerLimitStreak + 1 : 0;
+    lastAgentEvidence = currentRun && !limited ? continuationEvidence(event.messages) : null;
     // Only an observed editor Escape with pause disabled exempts this abort.
     // Unknown interrupt sources retain the safety fallback on every host.
     if (wasTurnAborted(event.messages) && !escapeAbortIsSuppressed()) {

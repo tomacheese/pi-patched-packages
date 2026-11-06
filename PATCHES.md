@@ -7,8 +7,9 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 - upstream: 0.8.4
 - patch: 0001-permission-hold-reported-failures.patch sha256:4676ef68780132ba187eb46934881825036112aa5d56c5ced688c0a7ad88a9c9
 - patch: 0002-recover-plain-language-goals.patch sha256:6ed7a7885851bc4b97106142d28709be20af3ec9c430b61bd4125ae58e84dc75
+- patch: 0003-usage-limit-not-no-progress.patch sha256:ec58ed176c63ecdf555f8f1ae52a39e01f9b38d72f4ed542de0cfe4f515b725a
 - file: README.md sha256:f5e5d800014b32e9bd8eac8287d1ef95c5403a88324e4c025c101a3add38e6a2
-- file: src/index.ts sha256:982a9639f02561b5bfefb87d44cb8689f8d4b70c10e22e06440f50792f04e715
+- file: src/index.ts sha256:26852b190ed3df4e6df425f0b3a2a8c426a28e70b38db939fa062f2b51bd1f63
 - file: src/permission-hold.ts sha256:d9207f226edad7481731e65b5fbda6e20b559a08d7e0f1f00ccf209981bb02f0
 - file: src/preferences.ts sha256:b7db1e79d89613627b71a3cdbe22af5a07c260a973edafec32c340158b35dc5b
 - file: src/settings-page.ts sha256:4775147ad61d08e76f0863bded85d5d8310a39b5a10d33ccdb22de6b52a83697
