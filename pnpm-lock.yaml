@@ -199,6 +199,9 @@ importers:
       jest-expect-message:
         specifier: 1.1.3
         version: 1.1.3
+      pi-auto-continue:
+        specifier: 0.4.1
+        version: 0.4.1(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))
       pi-better-goal:
         specifier: 0.11.0
         version: 0.11.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
@@ -2843,6 +2846,15 @@ packages:
   peowly@2.0.1:
     resolution: {integrity: sha512-T6hvS1bc/rXh4fA7jWOAteq5/c2kkz4QFRmGY9dER1ncqBDNwwWRD3h43ruiRr3YK5zHNqVrqfo2XUEqRo4gdQ==}
     engines: {node: ^22.13.0 || >=24.0.0, typescript: '>=5.9'}
+
+  pi-auto-continue@0.4.1:
+    resolution: {integrity: sha512-DEjGSIh0BgdVKo2lJHbBH/RMsiNI5RWkKfUkE14eDklLZY9FgphH9RwdQpqz7WHIuB5W1FdkTg91LG0O6xnKmA==}
+    engines: {node: '>=22.6'}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '*'
+    peerDependenciesMeta:
+      '@earendil-works/pi-coding-agent':
+        optional: true
 
   pi-better-goal@0.11.0:
     resolution: {integrity: sha512-YupKakIcNv1FH0q/GGi8iGyVLA7DCnoG7ccqFdefS70YvR8ytSKrg/KY00M//DEpnjnrQU0miNaNAAyDipKKOQ==}
@@ -6618,6 +6630,10 @@ snapshots:
       minipass: 7.1.3
 
   peowly@2.0.1: {}
+
+  pi-auto-continue@0.4.1(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)):
+    optionalDependencies:
+      '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
 
   pi-better-goal@0.11.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27):
     dependencies:

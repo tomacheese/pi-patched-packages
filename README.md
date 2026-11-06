@@ -2,10 +2,11 @@
 
 Local patches on top of upstream [pi](https://github.com/earendil-works) extension packages, rebuilt automatically when upstream releases a new version.
 
-Currently patched (both from [1aboveio/pi-better-harness](https://github.com/1aboveio/pi-better-harness), MIT):
+Currently patched (`pi-better-*` from [1aboveio/pi-better-harness](https://github.com/1aboveio/pi-better-harness), `pi-auto-continue` from [chxsong/pi-auto-continue](https://github.com/chxsong/pi-auto-continue), all MIT):
 
 | Package | Pinned upstream version | Patches |
 |---|---|---|
+| `pi-auto-continue` | see `package.json` | `patches/pi-auto-continue/` |
 | `pi-better-goal` | see `package.json` | `patches/pi-better-goal/` |
 | `pi-better-subagents` | see `package.json` | `patches/pi-better-subagents/` |
 

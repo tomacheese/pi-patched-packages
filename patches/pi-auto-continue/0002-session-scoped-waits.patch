@@ -1,0 +1,243 @@
+diff --git a/src/index.ts b/src/index.ts
+index e0f1bb8..b1c52ee 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -32,16 +32,13 @@ import {
+ 	createSafeUi,
+ 	getConfigPath,
+ 	getHandoffDir,
+-	getPendingWaitPath,
+ 	isRecord,
+ 	logDebug,
+ 	messageOf,
+-	readJsonFile,
+-	removeFileIfExists,
+ 	safeHasUi,
+ 	withSpinner,
+-	writeJsonFile,
+ } from "./util.ts";
++import { SessionWaitStore } from "./pending-store.ts";
+ import { WaitScheduler } from "./wait.ts";
+ import { RESUME_COMMAND, STATUS_KEY } from "./types.ts";
+ import type { PluginConfig, PendingWait, QuotaResetInfo, Strategy, UsageSnapshot } from "./types.ts";
+@@ -84,6 +81,8 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 	/** Consecutive auto-mode resumes that did not clear the rate limit. */
+ 	let autoResumeCount = 0;
+ 	let scheduler: WaitScheduler;
++	const pendingStore = new SessionWaitStore();
++	let boundSessionFile: string | undefined;
+ 	let configProblemNotified = configFileLooksBroken();
+ 	/**
+ 	 * The scheduler needs a context for status rendering, but contexts go stale on
+@@ -392,12 +391,13 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 	// ---------------------------------------------------------------------
+ 
+ 	function persistWait(wait: PendingWait | null): void {
+-		const path = getPendingWaitPath();
+ 		if (!wait) {
+-			removeFileIfExists(path);
++			pendingStore.clear();
+ 			return;
+ 		}
+-		writeJsonFile(path, toPendingWaitFile(wait));
++		if (!pendingStore.save(wait)) {
++			logDebug("wait could not be persisted (missing session file or I/O failure)");
++		}
+ 	}
+ 
+ 	scheduler = new WaitScheduler({
+@@ -658,69 +658,51 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 		notifyConfigProblemOnce(ctx);
+ 		maybeNotifyFirstRun(ctx);
+ 
+-		// Non-interactive runs never schedule a wait: there is no countdown to show
+-		// and no /ac cancel to stop an autonomous resume.
+ 		if (!safeHasUi(ctx)) return;
++		let sessionFile: string | undefined;
++		try {
++			sessionFile = ctx.sessionManager.getSessionFile() ?? undefined;
++		} catch {
++			sessionFile = undefined;
++		}
+ 
+-		// A wait that is already armed in memory owns the state: re-reading the file
+-		// would restart the countdown on every settle. The file check itself is a
+-		// cheap existsSync, so it runs on each session_start/agent_settled and can
+-		// still pick up a wait written by another pi process.
+-		if (scheduler.current) return;
+-
+-		const raw = readJsonFile<unknown>(getPendingWaitPath());
+-		if (!raw) return;
++		// A Pi process may switch sessions without exiting. Preserve the old
++		// session's saved wait, but never let its timer run in the new session.
++		if (sessionFile !== boundSessionFile) {
++			scheduler.dispose();
++			pendingStore.forget();
++			boundSessionFile = sessionFile;
++		}
++		if (!sessionFile || scheduler.current) return;
+ 
+-		const wait = fromPendingWaitFile(raw);
++		const loaded = pendingStore.load(sessionFile);
++		if (!loaded) return;
+ 		const ui = createSafeUi(ctx);
+-		if (!wait) {
+-			ui.notify("pi-auto-continue: a saved pending wait could not be read and was discarded.", "warning");
+-			removeFileIfExists(getPendingWaitPath());
++		if (loaded.kind === "invalid") {
++			ui.notify("pi-auto-continue: this session's saved wait was invalid and was discarded.", "warning");
+ 			return;
+ 		}
++		const wait = loaded.wait;
+ 
+-		// A wait is armed for the provider that hit the limit. If the user switched
+-		// providers, its reset time is meaningless, so discard instead of resuming
+-		// the wrong task under the wrong quota.
+ 		const currentProvider = providerId(ctx);
+ 		if (wait.provider && currentProvider !== "unknown" && wait.provider !== currentProvider) {
+ 			ui.notify(
+ 				`pi-auto-continue: a saved wait for '${wait.provider}' does not match the active provider '${currentProvider}' and was discarded.`,
+ 				"warning",
+ 			);
+-			removeFileIfExists(getPendingWaitPath());
++			pendingStore.clear();
+ 			return;
+ 		}
+ 
+ 		const remaining = wait.targetTime.getTime() - Date.now();
+-
+-		if (wait.strategy === "inplace") {
+-			let current: string | undefined;
+-			try {
+-				current = ctx.sessionManager.getSessionFile();
+-			} catch {
+-				current = undefined;
+-			}
+-			if (wait.sessionFile && current && wait.sessionFile !== current) {
+-				ui.notify(
+-					"pi-auto-continue: a saved in-place wait belongs to a different session and was discarded. Use /ac to re-arm it.",
+-					"warning",
+-				);
+-				removeFileIfExists(getPendingWaitPath());
+-				return;
+-			}
+-		}
+-
+ 		if (remaining <= 0) {
+ 			ui.notify(
+ 				`pi-auto-continue: a saved wait already elapsed at ${formatClock(wait.targetTime)} — resuming in 5s.`,
+ 				"info",
+ 			);
+-			const timer = setTimeout(() => {
+-				persistWait(null);
+-				performResume(ctx, wait);
+-			}, 5000);
+-			timer.unref?.();
++			// Let the scheduler own the timer so repeated settle events cannot
++			// schedule duplicate resumptions.
++			startWait(ctx, { ...wait, targetTime: new Date() });
+ 			return;
+ 		}
+ 
+@@ -820,9 +802,10 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 
+ 	pi.on("session_shutdown", () => {
+ 		// Clear timers so a pending wait can never fire against a stale context.
+-		// The persisted pending-wait file is intentionally left in place so the
+-		// next session can restore it.
++		// Keep the session-scoped wait on disk for a future restart.
+ 		scheduler.dispose();
++		pendingStore.forget();
++		boundSessionFile = undefined;
+ 	});
+ 
+ 	// ---------------------------------------------------------------------
+diff --git a/src/pending-store.ts b/src/pending-store.ts
+new file mode 100644
+index 0000000..f8e1df3
+--- /dev/null
++++ b/src/pending-store.ts
+@@ -0,0 +1,56 @@
++/**
++ * Session-isolated pending wait persistence. Only the owning session may
++ * restore/clear a wait. Legacy shared waits are adopted only by their owner.
++ */
++import { existsSync } from "node:fs";
++import { fromPendingWaitFile, toPendingWaitFile } from "./handoff.ts";
++import { getPendingWaitPath, readJsonFile, removeFileIfExists, writeJsonFile } from "./util.ts";
++import type { PendingWait } from "./types.ts";
++
++export type LoadedWait = { kind: "restored"; wait: PendingWait } | { kind: "invalid" };
++
++export class SessionWaitStore {
++	private activePath: string | undefined;
++
++	load(sessionFile: string): LoadedWait | null {
++		const path = getPendingWaitPath(sessionFile);
++		if (existsSync(path)) {
++			const wait = fromPendingWaitFile(readJsonFile<unknown>(path));
++			if (!wait || wait.sessionFile !== sessionFile) {
++				removeFileIfExists(path);
++				return { kind: "invalid" };
++			}
++			this.activePath = path;
++			return { kind: "restored", wait };
++		}
++
++		// Previous releases used one shared file for all Pi sessions. Never
++		// delete or adopt a wait belonging to another session.
++		const legacyPath = getPendingWaitPath();
++		if (!existsSync(legacyPath)) return null;
++		const legacyWait = fromPendingWaitFile(readJsonFile<unknown>(legacyPath));
++		if (!legacyWait || legacyWait.sessionFile !== sessionFile) return null;
++		this.activePath = legacyPath;
++		return { kind: "restored", wait: legacyWait };
++	}
++
++	/** Writes the new path before removing an owned legacy file. */
++	save(wait: PendingWait): boolean {
++		if (!wait.sessionFile) return false;
++		const path = getPendingWaitPath(wait.sessionFile);
++		if (!writeJsonFile(path, toPendingWaitFile(wait))) return false;
++		if (this.activePath && this.activePath !== path) removeFileIfExists(this.activePath);
++		this.activePath = path;
++		return true;
++	}
++
++	clear(): void {
++		if (this.activePath) removeFileIfExists(this.activePath);
++		this.activePath = undefined;
++	}
++
++	/** Drop local ownership without deleting a previous session's saved wait. */
++	forget(): void {
++		this.activePath = undefined;
++	}
++}
+diff --git a/src/util.ts b/src/util.ts
+index d9c7757..a9b8462 100644
+--- a/src/util.ts
++++ b/src/util.ts
+@@ -8,6 +8,7 @@
+  * `setInterval`/`setTimeout` callback terminates the whole pi process.
+  */
+ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
++import { createHash } from "node:crypto";
+ import { homedir } from "node:os";
+ import { dirname, join } from "node:path";
+ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+@@ -37,8 +38,12 @@ export function getConfigPath(): string {
+ 	return join(getStateDir(), "config.json");
+ }
+ 
+-export function getPendingWaitPath(): string {
+-	return join(getStateDir(), "pending-wait.json");
++/** Session-scoped wait files. Without a session file, return the legacy path
++ * for migration only; never write new waits to the shared legacy file. */
++export function getPendingWaitPath(sessionFile?: string): string {
++	if (!sessionFile) return join(getStateDir(), "pending-wait.json");
++	const key = createHash("sha256").update(sessionFile).digest("hex");
++	return join(getStateDir(), "pending-waits", `${key}.json`);
+ }
+ 
+ export function getLogPath(): string {

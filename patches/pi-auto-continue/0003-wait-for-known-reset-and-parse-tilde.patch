@@ -1,0 +1,41 @@
+diff --git a/src/index.ts b/src/index.ts
+index b1c52ee..2c36413 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -50,6 +50,8 @@ const THRESHOLD_CHECK_INTERVAL_MS = 5 * 60_000;
+ const AUTO_MIN_WAIT_MS = 5 * 60_000;
+ /** Cap the backoff when quota reset data is missing or inaccurate. */
+ const AUTO_MAX_RETRY_DELAY_MS = 60 * 60_000;
++/** Slack added after a known reset time so the retry does not land just before it. */
++const AUTO_RESET_MARGIN_MS = 5_000;
+ 
+ interface RateLimitEvidence {
+ 	rateLimited: boolean;
+@@ -560,8 +562,11 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 		if (config.autoMode === "auto") {
+ 			const backoffMs = Math.min(AUTO_MAX_RETRY_DELAY_MS, AUTO_MIN_WAIT_MS * 2 ** Math.min(autoResumeCount, 4));
+ 			const cappedResetWaitMs = Math.min(remainingMs, config.autoResumeMaxWaitMinutes * 60_000);
+-			const waitMs = Math.max(backoffMs, cappedResetWaitMs);
+-			autoResumeCount = Math.min(autoResumeCount + 1, 5);
++			// A known, still-future reset time is exact: wait for it instead of the
++			// retry backoff, which only guards against missing or stale reset data.
++			const resetKnown = resetInfo !== null && remainingMs > 0;
++			const waitMs = resetKnown ? cappedResetWaitMs + AUTO_RESET_MARGIN_MS : backoffMs;
++			if (!resetKnown) autoResumeCount = Math.min(autoResumeCount + 1, 5);
+ 			logDebug(`auto mode wait: ${formatRemainingTime(waitMs)}; consecutive rate limits=${autoResumeCount}; reset source=${resetInfo?.source ?? "unknown"}`);
+ 			await armWait(ctx, { strategy, targetTime: new Date(Date.now() + waitMs), provider });
+ 			return;
+diff --git a/src/reset-parse.ts b/src/reset-parse.ts
+index 6b39dad..4c8a8a3 100644
+--- a/src/reset-parse.ts
++++ b/src/reset-parse.ts
+@@ -155,7 +155,8 @@ export function parseHeaderReset(
+ }
+ 
+ const ISO_PATTERN = /\b(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\b/;
+-const RELATIVE_PATTERN = /(?:in|after|wait|try again in)\s+((?:\d+(?:\.\d+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)\b\s*)+)/i;
++// `~` covers `Resets in ~125h`; (?![a-z]) rather than \b so `1h30m` parses.
++const RELATIVE_PATTERN = /(?:in|after|wait|try again in)\s+~?\s*((?:\d+(?:\.\d+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])\s*)+)/i;
+ const CLOCK_PATTERN = /(?:at|until|resets? at)\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]m)?/i;
+ 
+ /** Parse a relative duration phrase such as `1 hour 30 minutes`. */

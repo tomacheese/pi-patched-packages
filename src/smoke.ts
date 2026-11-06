@@ -21,6 +21,7 @@ interface RpcCommand {
 
 /** Extension commands that must come from each package (command name, package). */
 const EXPECTED_COMMANDS = [
+  { command: 'ac', packageName: 'pi-auto-continue' },
   { command: 'goal', packageName: 'pi-better-goal' },
   { command: 'agents', packageName: 'pi-better-subagents' },
 ] as const
@@ -154,6 +155,37 @@ async function checkPatchEffects(
   return effects.length
 }
 
+/**
+ * Runs the patched `pi-auto-continue` reset parser on messages seen in real
+ * logs (a tilde before the hours, a compact `1h30m`).
+ * @param outDir Dist directory
+ */
+function checkResetParse(outDir: string): void {
+  const script = `
+    import { parseErrorBodyReset } from ${JSON.stringify(
+      path.join(outDir, 'packages', 'pi-auto-continue', 'src', 'reset-parse.ts')
+    )}
+    const cases = [
+      ['Codex usage limit reached (plus plan). Resets in ~125h.', 125],
+      ['Resets in ~2.5h.', 2.5],
+      ['try again in 1h30m', 1.5],
+    ]
+    for (const [text, hours] of cases) {
+      const info = parseErrorBodyReset(text, 'p', Date.now())
+      const actual = info ? (info.resetsAt.getTime() - Date.now()) / 3600000 : null
+      if (actual === null || Math.abs(actual - hours) > 0.01) {
+        throw new Error('reset parse failed for: ' + text + ' => ' + actual)
+      }
+    }
+  `
+  execFileSync(
+    process.execPath,
+    ['--experimental-strip-types', '--input-type=module', '-e', script],
+    { stdio: 'inherit' }
+  )
+  console.log('reset parser: ok')
+}
+
 /** Runs the smoke test. */
 async function main(): Promise<void> {
   const repoRoot = process.cwd()
@@ -200,6 +232,7 @@ async function main(): Promise<void> {
       }
       console.log(`command /${expected.command}: ${source}`)
     }
+    checkResetParse(outDir)
     const checked = await checkPatchEffects(repoRoot, outDir)
     console.log(`patch effects: ${String(checked)} file(s) verified`)
   } finally {
