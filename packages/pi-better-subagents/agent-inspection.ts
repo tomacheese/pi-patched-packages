@@ -12,7 +12,7 @@ import { formatDiagnostic, shortRoleName, type Diagnostic } from "./catalog-sche
 import type { CatalogSnapshot } from "./catalog-store.ts";
 import { loadConfig, normalizeTools, SAFE_DEFAULT_TOOLS, type SubagentConfig } from "./config.ts";
 import { resolveExtensions } from "./extensions.ts";
-import { sandboxSupported } from "./sandbox.ts";
+import type { PermissionProfile } from "./permission-policy.ts";
 
 export const LEGACY_CAPABILITY_CONTROLS = [
     "tool selection",
@@ -35,11 +35,13 @@ export interface EffectiveLaunchCapabilities {
         providerExtensions: "resolved" | "unknown";
     };
     sandbox: {
-        /** Default spawn policy. A caller can still pass sandbox:false. */
-        enabled: true;
-        /** Whether this platform would actually confine writes. Never claimed when the probe fails. */
+        /** Current default spawn policy; sandbox:true can also request confinement. */
+        enabled: boolean;
+        /** Unknown for an enabled profile until launch verifies confinement. */
         applied: boolean | "unknown";
         writes: "working-directory" | "unconfined" | "unknown";
+        /** Published human profile, including retained details while disabled. Not catalog grants. */
+        permissions?: PermissionProfile;
     };
     workspace: {
         cwd: string | "unknown";
@@ -128,6 +130,7 @@ export interface OperationView {
     winningSource?: { scope: string; path: string; contentDigest: string; id: string };
     shadowed: { scope: string; path: string; contentDigest: string; reason: string }[];
     instructionMode?: string;
+    preferenceSources?: Partial<Record<"model" | "effort", { scope: "user" | "project"; path: string; bundled?: boolean }>>;
     instructions?: string;
     fields?: { model: OperationField; effort: OperationField; tier: OperationField };
     /** The definition's own default model and effort (role default, or the agent's override or inherited value). Null when neither is set. */
@@ -171,12 +174,13 @@ const STATIC_CAPABILITIES = {
 /**
  * Values `spawnSubagentRun` uses when a catalog launch omits tools, sandbox,
  * workspace, and nesting. A missing model does not invent provider extensions.
- * A failed sandbox probe stays unknown rather than enforced.
+ * Without a published profile, sandboxing defaults to off.
  */
 export function describeDefaultLaunchCapabilities(input: {
     config: SubagentConfig;
     model?: string | null;
     cwd?: string;
+    sandboxPermissions?: PermissionProfile;
 }): EffectiveLaunchCapabilities {
     const rawTools = input.config.defaultTools ?? SAFE_DEFAULT_TOOLS;
     const toolAllowlist = typeof rawTools === "string" ? normalizeTools(rawTools) : "unknown";
@@ -199,22 +203,23 @@ export function describeDefaultLaunchCapabilities(input: {
             providerExtensions: model ? "resolved" : "unknown",
         };
     }
-    let applied: boolean | "unknown" = "unknown";
-    try {
-        applied = sandboxSupported();
-    } catch {
-        applied = "unknown";
-    }
-    const writes = applied === true ? "working-directory" : applied === false ? "unconfined" : "unknown";
     const cwd = typeof input.cwd === "string" && input.cwd.trim() !== "" ? input.cwd : "unknown";
+    const permissions = input.sandboxPermissions;
+    const enabled = permissions?.enabled ?? false;
     return {
         toolAllowlist,
         extensions,
-        sandbox: { enabled: true, applied, writes },
+        sandbox: {
+            enabled,
+            applied: enabled ? "unknown" : false,
+            // Profiles can permit outside writes or disallow project writes.
+            writes: enabled ? "unknown" : "unconfined",
+            ...(permissions ? { permissions } : {}),
+        },
         workspace: {
             cwd,
             gitClone: false,
-            sandboxRoot: applied === true ? cwd : applied === false ? null : "unknown",
+            sandboxRoot: enabled ? cwd : null,
         },
         nesting: { allowNested: false },
     };
@@ -328,6 +333,11 @@ export function presentCatalogEntry(snapshot: CatalogSnapshot, id: string, enric
         winningSource: inspection.winningSource,
         shadowed: inspection.shadowed.map((item) => ({ ...item })),
         instructionMode: inspection.instructionMode,
+        preferenceSources: Object.fromEntries((["model", "effort"] as const).flatMap(key => {
+            const owner = inspection.kind === "agent" && fields?.[key].inherited ? inspection.roleId : id;
+            const source = owner ? snapshot.preferenceSources?.[owner]?.[key] : undefined;
+            return source ? [[key, source]] : [];
+        })),
         instructions: inspection.instructions,
         fields,
         defaults: definitionDefaults(fields),

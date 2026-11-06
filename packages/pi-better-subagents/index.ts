@@ -17,11 +17,10 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 import * as PiCodingAgent from "@earendil-works/pi-coding-agent";
 import * as PiTui from "@earendil-works/pi-tui";
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { initializeNavigatorPanels } from "./shared-navigator-panels.ts";
 import { matchesKey, Key, truncateToWidth, type AutocompleteItem } from "@earendil-works/pi-tui";
 import { Type } from "@earendil-works/pi-ai";
 import {
-    CLOSE_CONFIRM_STATUS_KEY,
-    NAVIGATOR_STATUS_KEY,
     disposeBackgroundWorkNavigator,
     ensureBackgroundWorkNavigator,
     isNavigatorUiAvailable,
@@ -32,11 +31,14 @@ import {
     type BackgroundWorkProvider,
     type BackgroundWorkRow,
 } from "./shared-navigator.ts";
-import { spawnDetached, type SpawnResult } from "./spawn.ts";
-import { parseRun, readRunTranscript, resetParseRunCursor, type Usage } from "./parse.ts";
+import { spawnDetached, killProcessTree, type SpawnResult } from "./spawn.ts";
+import { parseRun, parseRunForLifecycle, readRunTranscript, resetParseRunCursor, type Usage } from "./parse.ts";
 import { finalizeRun as finalizeRunCore } from "./finalization.ts";
-import { loadConfig, writeDelegationMode, writeSubagentSettings, isConcurrencyCap, normalizeConcurrencyCap, normalizeTools, resolveExtensionPath, selfDir, SAFE_DEFAULT_TOOLS, SAFE_CLEAN_TOOLS } from "./config.ts";
+import { selectSessionByName } from "./session-selection.ts";
+import { isWithinWorkspace } from "./workspace-scope.ts";
+import { loadConfig, writeDelegationMode, writeSubagentSettings, isConcurrencyCap, normalizeConcurrencyCap, normalizeTools, resolveExtensionPath, configPath, selfDir, SAFE_DEFAULT_TOOLS, SAFE_CLEAN_TOOLS } from "./config.ts";
 import { createSubagentSettingsPage } from "./settings-page.ts";
+import { effectiveSubagentSettings, formatSubagentSettings, subagentSettingsTool, SUBAGENT_SETTINGS_CONTEXT } from "./effective-settings.ts";
 import { STEER_FILE_ENV, readSteerReceipt } from "./child-steer.ts";
 import {
     decideTiming,
@@ -53,16 +55,20 @@ import {
     type TimingStopReason,
 } from "./timing.ts";
 import { readAppendedLines, type LogCursor } from "./log-cursor.ts";
-import { DELEGATION_MODES, DELEGATION_MODE_REQUEST, delegationPrompt, isDelegationMode, normalizeDelegationMode, type DelegationMode } from "./delegation.ts";
+import { DELEGATION_MODES, DELEGATION_MODE_REQUEST, isDelegationMode, normalizeDelegationMode, type DelegationMode } from "./delegation.ts";
 import { appendExecutionPolicy } from "./shared-execution-policy.ts";
+import { resolveChildClosure, resolveChildLaunch, configSnapshot } from "./child-dependencies.mjs";
+import { PREFLIGHT_ENV } from "./child-preflight.mjs";
 import { resolveExtensions, extensionArgs } from "./extensions.ts";
-import { prepareTaskRuntime } from "./task-policy.ts";
+import { prepareTaskRuntime, applyDirectApplicationLoadout, RUN_APPLICATION, SDK_BUILTIN_TOOLS } from "./task-policy.ts";
 import { canonicalizePath, takeRecoverySnapshot } from "./shared-sandbox-core.ts";
 import { TASK_BUILTINS } from "./shared-task-sandbox.ts";
 import { APPLY_PATCH, describeTaskTools, planTaskTools } from "./subagent-tools.ts";
-import { observeSandboxPermissions, resolveSubagentPermissions } from "./permission-policy.ts";
+import {
+    announceExecutionAdapter, observeSandboxPermissions, resolveCommandSettings, resolveSubagentPermissions,
+} from "./permission-policy.ts";
 import { resolveSubagentWorkspace } from "./git-workspace.ts";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
     baseDir,
     taskWorkspaceDir,
@@ -70,6 +76,8 @@ import {
     runDir,
     recordTaskRuntimeProvenance,
     discardFailedLaunch,
+    recordLaunchAttempt,
+    clearLaunchAttempt,
     logPathFor,
     promptPathFor,
     nextRunId,
@@ -145,6 +153,15 @@ import {
     buildNavigatorDetail,
 } from "./navigator.ts";
 import { enforceRegistrySizeCapOnce, runDailyCleanupOnce } from "./cleanup.ts";
+import {
+    ContinuationError,
+    acquireConversationLease,
+    assertContinuationExtensions,
+    buildLaunchRecipe,
+    planContinuation,
+    type ContinuationPlan,
+    type ConversationLease,
+} from "./continuation.ts";
 import { assertThinkingLevel, parseModelThinking, type ThinkingLevel } from "./thinking.ts";
 import { createAgentOperations } from "./agent-operations.ts";
 import { createAgentSessionSettings } from "./agent-session-settings.ts";
@@ -162,6 +179,7 @@ import {
     type CatalogJobFields,
     type CatalogRunRecord,
 } from "./catalog-runtime.ts";
+import { registerSubagentsGoalProvider } from "./goal-provider.ts";
 import { defaultUserRoot, type CatalogSnapshot } from "./catalog-store.ts";
 
 const SUBAGENT_MODE_ACTIONS: readonly AutocompleteItem[] = [
@@ -186,6 +204,7 @@ const SUBAGENT_TOOLS = [
     "subagent_spawn",
     "subagent_spawn_batch",
     "subagent_list",
+    "subagent_settings",
     "subagent_output",
     "subagent_stop",
     "subagent_result",
@@ -208,44 +227,6 @@ const SUBAGENT_ORCHESTRATION_GUIDELINES = [
     "When a structured plan is active, follow the current delegation mode. Track delegated and foreground deliverables only when delegation is permitted and actually underway; continue unblocked foreground work and integrate results before marking work complete.",
     "Do not treat launching a subagent as completion of the parent milestone; relevant terminal results must be inspected and integrated before verification or completion.",
 ];
-
-const GOAL_READY_EVENT = "pi-better-goal:ready";
-const GOAL_REGISTER_PROVIDER_EVENT = "pi-better-goal:register-provider";
-const goalReadySubscriptions = new WeakSet<ExtensionAPI>();
-
-function registerSubagentsGoalProvider(pi: ExtensionAPI): void {
-    const emitProvider = (): void => {
-        pi.events?.emit(GOAL_REGISTER_PROVIDER_EVENT, {
-            id: "subagents",
-            label: "Subagents",
-            getActivity: () => ({
-                providerId: "subagents",
-                label: "Subagents",
-                items: listMetasForParent(process.pid).map((meta) => {
-                    const status = effectiveStatus(meta);
-                    const active = status === "running" || status === "orphaned";
-                    return {
-                        id: meta.id,
-                        ...(meta.name ? { label: meta.name } : {}),
-                        status,
-                        active,
-                        unhealthy: status === "orphaned",
-                        terminal: !active,
-                        attention: status === "orphaned" || status === "failed" || status === "killed" || status === "lost" || status === "exited",
-                        startedAt: meta.startedAt,
-                        ...(meta.endedAt !== undefined ? { endedAt: meta.endedAt } : {}),
-                    };
-                }),
-            }),
-            onActivityChanged: onMetaChanged,
-        });
-    };
-    if (!goalReadySubscriptions.has(pi)) {
-        pi.events?.on?.(GOAL_READY_EVENT, emitProvider);
-        goalReadySubscriptions.add(pi);
-    }
-    emitProvider();
-}
 
 // ---- retired live status widget ------------------------------------------
 //
@@ -318,10 +299,18 @@ function verifiedOriginFromContext(ctx: ExtensionContext | undefined): RunCallba
     }
 }
 
+/**
+ * Instance-local suppression: this module has no active session, not the run.
+ * A finalizer that runs after `/reload` (the process and its exit observer
+ * survive the session) can report this even though the replacing session owns
+ * the run, so it must never be written as a durable suppression (#625).
+ */
+const NO_ACTIVE_SESSION_REASON = "active session identity is unavailable";
+
 function callbackSuppressionReason(meta: RunMeta, active: RunCallbackOrigin | undefined = activeCallbackOrigin): string | undefined {
     const origin = meta.callbackOrigin;
     if (origin) {
-        if (!active) return "active session identity is unavailable";
+        if (!active) return NO_ACTIVE_SESSION_REASON;
         if (origin.cwd !== active.cwd) return `origin cwd ${origin.cwd} does not match active cwd ${active.cwd}`;
         if (origin.sessionId && origin.sessionId !== active.sessionId) {
             return `origin session ${origin.sessionId} does not match active session ${active.sessionId ?? "unknown"}`;
@@ -356,25 +345,104 @@ function hasSelfProcessIdentity(meta: RunMeta): boolean {
     return meta.pid === process.pid || meta.pgid === process.pid;
 }
 
-function stopCurrentSessionSubagents(ctx: ExtensionContext): void {
+/**
+ * Runs this extension instance launched, so its in-memory exit observer is the
+ * authority that finalizes them. A run adopted after `/reload` is absent here:
+ * the instance that held the observer is gone, so supervision falls back to the
+ * child's own log (see `finalizeInterruptedRunFromLog`).
+ */
+const directlySupervisedRunIds = new Set<string>();
+
+/**
+ * Detach current-session live work instead of killing it (#625).
+ *
+ * Subagent children are detached process groups: they survive the foreground
+ * process dying. The previous shutdown loop therefore made every controlled
+ * `/reload` (and every clean quit) a silent, destructive end to in-flight work —
+ * no drain, no warning, and the run recorded `killed`. Shutdown now only records
+ * that this session's direct supervision ended; the child and all of its saved
+ * state stay untouched, and the next session of the same pi process resumes
+ * supervision and finalizes it from the child's own log.
+ *
+ * Returns the interrupted runs so the caller can warn the human.
+ */
+function interruptCurrentSessionSubagents(reason: string, ctx: ExtensionContext): RunMeta[] {
     const origin = callbackOriginFromContext(ctx);
+    const now = Date.now();
+    const interrupted: RunMeta[] = [];
     for (const summary of listMetasForParent(process.pid)) {
         if (!ownedByThisParent(summary)) continue;
         if (summary.status !== "running" && summary.status !== "orphaned") continue;
         if (!belongsToOrigin(summary, origin)) continue;
-        // Automatic shutdown cleanup must not let corrupt or synthetic metadata
-        // signal the foreground Pi process itself.
+        // Corrupt or synthetic metadata must never point the interruption record
+        // (or any later signal) at the foreground Pi process itself.
         if (hasSelfProcessIdentity(summary)) continue;
-        try { stopRun(summary.id); } catch { /* best-effort shutdown cleanup */ }
+        try {
+            // Re-read under the id: a run may have finished while shutdown ran.
+            const meta = readMeta(summary.id);
+            if (!meta || (meta.status !== "running" && meta.status !== "orphaned")) continue;
+            meta.supervisionInterruptedAt = now;
+            meta.supervisionInterruptedReason = reason;
+            writeMeta(meta);
+            interrupted.push(meta);
+        } catch { /* a failed marker must never kill or block the child */ }
         spendCache.delete(summary.id);
         healthLogCache.delete(summary.id);
         resetChildEventLogCursor(summary.id);
     }
+    return interrupted;
+}
+
+/** Warn the human that a shutdown/reload left delegated work running (#625). */
+function warnInterruptedSubagents(ctx: ExtensionContext, interrupted: RunMeta[], reason: string): void {
+    if (interrupted.length === 0) return;
+    const count = interrupted.length;
+    const label = count === 1 ? "1 subagent run is" : `${count} subagent runs are`;
+    const ids = interrupted.slice(0, 3).map((meta) => meta.id).join(", ") + (count > 3 ? ", …" : "");
+    const verb = reason === "reload" ? "reload" : "session shutdown";
+    const guidance = reason === "reload"
+        ? "The reloaded session resumes supervision and reports the result; use subagent_stop to end it instead."
+        : "They keep running detached and stay readable with subagent_result/subagent_output; use subagent_stop to end one.";
+    try {
+        ctx.ui.notify(`Subagent ${label} still running (${ids}) — ${verb} no longer kills delegated work. ${guidance}`, "warning");
+    } catch { /* no UI available (print/RPC/quit) */ }
+}
+
+/**
+ * True once this extension instance's `session_shutdown` has run. A late child
+ * finalizer can still execute after `/reload` (the process and its exit
+ * observer survive the session), and such a finalizer must not restart
+ * supervision loops or durably suppress a callback just because THIS instance
+ * no longer has a session.
+ */
+let sessionTornDown = false;
+
+/**
+ * "The rightful conversation is not the active one", not "this notification is
+ * dead" (#625). These reasons only defer delivery to whoever owns the run, so
+ * they must never consume an interrupted run's owed completion.
+ */
+function isConversationIdentityReason(reason: string): boolean {
+    return reason === NO_ACTIVE_SESSION_REASON
+        || reason.startsWith("origin session ")
+        || reason.startsWith("origin cwd ")
+        || reason.startsWith("legacy run cwd ");
 }
 
 function markCompletionCallbackSuppressed(id: string, reason: string, now: number = Date.now()): void {
+    // A finalizer that runs after this instance was torn down cannot name the
+    // session that owns the run now. Suppressing durably would erase the
+    // pending marker the replacing session recovers (#625), so leave it.
+    if (sessionTornDown && reason === NO_ACTIVE_SESSION_REASON) return;
     const meta = readMeta(id);
     if (!meta || meta.completionCallbackSentAt !== undefined || meta.completionCallbackSuppressedAt !== undefined) return;
+    // An explicitly interrupted run owes its completion to the conversation that
+    // launched it (#625, DEV-226 criterion 5). An unrelated session merely being
+    // active — B opening before the original A returns — drops this delivery
+    // attempt but must keep the obligation: the pending marker stays, and A
+    // recovers it when it comes back. Records that never lost supervision keep
+    // today's durable suppression, so legacy/foreign notifications stay dead.
+    if (meta.supervisionInterruptedAt !== undefined && isConversationIdentityReason(reason)) return;
     meta.completionCallbackSuppressedAt = now;
     meta.completionCallbackSuppressedReason = reason;
     writeMeta(meta);
@@ -424,10 +492,32 @@ function enqueueCompletionCallback(pi: ExtensionAPI, id: string): void {
     });
 }
 
-/** Recover only records explicitly marked pending; legacy terminal runs never replay. */
+/**
+ * Recover only records explicitly marked pending; legacy terminal runs never replay.
+ *
+ * Current-parent records are recovered unconditionally (the owner decides, and the
+ * session gate still suppresses a different foreground session). A run an
+ * interrupted DEAD parent left behind is recovered only by the conversation that
+ * launched it: that session id is the ownership proof, so an unrelated session
+ * never adopts it. A foreign parent that is still alive keeps ownership — the
+ * same `isAbandonedByParent` proof the running-record supervision uses — so this
+ * path never takes a live pi's terminal callback (#625, DEV-226 criterion 5).
+ */
 function recoverCompletionCallbacks(pi: ExtensionAPI): void {
     for (const meta of listMetasForParent(process.pid)) {
         if (!ownedByThisParent(meta)) continue;
+        enqueueCompletionCallback(pi, meta.id);
+    }
+    const activeSessionId = activeCallbackOrigin?.sessionId;
+    if (!activeSessionId) return;
+    for (const summary of listMetas()) {
+        if (ownedByThisParent(summary) || summary.supervisionInterruptedAt === undefined) continue;
+        if (summary.status === "running" || summary.status === "orphaned") continue;
+        // A live foreign parent still owns its run's callback: never deliver for it.
+        if (!isAbandonedByParent(summary, realProcessProbe)) continue;
+        const meta = readMeta(summary.id);
+        if (!meta || meta.status === "running" || meta.status === "orphaned") continue;
+        if (meta.callbackOrigin?.sessionId !== activeSessionId) continue;
         enqueueCompletionCallback(pi, meta.id);
     }
 }
@@ -570,7 +660,15 @@ function syncWidgetNavSelection(running: RunMeta[]): void {
  */
 function renderWidget(): void {
     const ctx = uiCtx;
-    if (!ctx || !ctx.hasUI) return;
+    if (!ctx) return;
+    // A run can exit after Pi replaced the session that captured this ctx; Pi then throws on any
+    // property read. That session's UI is gone, so drop the ctx instead of failing the finalizer.
+    try {
+        if (!ctx.hasUI) return;
+    } catch {
+        if (uiCtx === ctx) uiCtx = undefined;
+        return;
+    }
     updateNavigatorFooter(ctx);
     try { ctx.ui.setWidget("subagents", WIDGET_CLEAR); } catch { /* ignore */ }
     spendCache.clear();
@@ -688,7 +786,9 @@ function childSteerExtensionPath(): string {
 function readProgress(meta: RunMeta): ProgressState {
     let entry = progressCache.get(meta.id);
     const read = readAppendedLines(logPathFor(meta.id), entry?.cursor);
-    if (!entry || read.restarted) entry = { state: emptyProgress(meta.startedAt) };
+    // A fresh (or restarted) fold may have lost the start of a call that is still
+    // running: seed it from the durable record rather than reporting silence.
+    if (!entry || read.restarted) entry = { state: emptyProgress(meta.startedAt, meta.timing?.inFlight) };
     if (read.error === undefined) entry.cursor = read.cursor;
     for (const line of read.lines) {
         if (!isProgressRelevantLine(line)) continue;
@@ -770,6 +870,9 @@ function stopForTiming(pi: ExtensionAPI | undefined, id: string, reason: TimingS
         // it was finalized from its log): its own exit is the outcome, not a harness stop.
         patchTiming(id, { stopReason: undefined, stoppedAt: undefined });
         progressCache.delete(id);
+        // A log finalization is terminal evidence discovered here, not by the child
+        // exit handler, so this path still owes the one completion callback (#624).
+        if (pi && outcome.action === "finalized") enqueueCompletionCallback(pi, id);
         return outcome.action === "finalized";
     }
     const current = readMeta(id);
@@ -800,10 +903,24 @@ function enforceTiming(pi: ExtensionAPI | undefined, meta: RunMeta, now: number)
         return timing.ceilingAt !== undefined && now >= timing.ceilingAt ? stopForTiming(pi, meta.id, "ceiling", now) : false;
     }
     if (meta.status !== "running") return false;
-    const needsProgress = timing.stuckMs !== undefined || (timing.deadlineAt !== undefined && now >= timing.deadlineAt);
+    // Progress is folded whenever a control can use it: the stuck window, or a deadline whose
+    // steer must be held behind a running call (the record of that call must exist before the
+    // deadline, not only after it).
+    const needsProgress = timing.stuckMs !== undefined || timing.deadlineAt !== undefined;
     const progress = needsProgress ? readProgress(meta) : undefined;
     const patch: Partial<NonNullable<RunMeta["timing"]>> = {};
     if (progress?.lastProgressAt !== undefined && progress.lastProgressAt > (timing.lastProgressAt ?? 0)) patch.lastProgressAt = progress.lastProgressAt;
+    if (progress) {
+        // Durable still-alive evidence: the call the child is waiting on. Survives a
+        // reload whose bounded log read no longer contains the call's start (#620).
+        const openId = progress.open.keys().next().value as string | undefined;
+        const since = progress.inFlightSince ?? progress.lastEventAt ?? meta.startedAt;
+        if (openId === undefined) {
+            if (timing.inFlight !== undefined) patch.inFlight = undefined;
+        } else if (timing.inFlight?.id !== openId || timing.inFlight.since !== since) {
+            patch.inFlight = { id: openId, since };
+        }
+    }
     if (timing.steerRequestedAt !== undefined && timing.steerDeliveredAt === undefined) {
         // The child's receipt for this run's steer; clamped so a skewed clock cannot move grace earlier than the request.
         const receipt = readSteerReceipt(steerPathFor(meta.id));
@@ -860,6 +977,14 @@ function reconcileHealth(): void {
                 summary: meta.status === "lost" ? "Child supervision was lost; outcome is unknown" : "Child supervision interrupted; related work may still be alive" }], now);
         }
         deliverFailureAttention(pi, meta, now);
+        // Interrupted work whose child already exited is finalized from its own
+        // coherent log before any other verdict (and before timing can mislabel
+        // an already-finished run as stopped) (#625).
+        if (meta.status === "running" || meta.status === "orphaned") {
+            try {
+                if (finalizeInterruptedRunFromLog(pi, meta, now)) continue;
+            } catch { /* best-effort; the ordinary reconciliation below still runs */ }
+        }
         try {
             if (enforceTiming(pi, meta, now)) continue;
         } catch { /* timing is best-effort per tick; supervision below still runs */ }
@@ -897,6 +1022,19 @@ function reconcileHealth(): void {
             deliverHealthCallback(pi, meta, meta.status, now);
         }
     }
+    // A restart leaves an explicitly interrupted child whose owning pi is gone
+    // (#625). Its record is foreign, so the owner-gated loops above never see it:
+    // finalize it from its own coherent log once the child itself is gone. This
+    // is the human's own interrupted work, not another session's live run, and
+    // `finalizeInterruptedRunFromLog` still requires all process evidence to be
+    // absent, so a live writer is never touched.
+    for (const summary of listMetas()) {
+        if (summary.status !== "running" && summary.status !== "orphaned") continue;
+        if (ownedByThisParent(summary) || !ownsInterruptedSupervision(summary)) continue;
+        const meta = readMeta(summary.id);
+        if (!meta || (meta.status !== "running" && meta.status !== "orphaned")) continue;
+        try { finalizeInterruptedRunFromLog(pi, meta, Date.now()); } catch { /* the next tick retries */ }
+    }
     // Completed runs can still have failed completion handoffs to retry.
     for (const summary of listMetasForParent(process.pid)) {
         if (!pi || !ownedByThisParent(summary) || summary.status === "running" || summary.status === "orphaned" || summary.status === "lost") continue;
@@ -904,7 +1042,7 @@ function reconcileHealth(): void {
         if (meta && meta.completionCallbackPendingAt !== undefined && meta.completionCallbackSentAt === undefined && meta.completionCallbackSuppressedAt === undefined) enqueueCompletionCallback(pi!, meta.id);
     }
     pruneProgressCache();
-    if (!needsMonitoring(listMetasForParent(process.pid)) && !hasPendingFailureCallbacks()) stopHealthTicker();
+    syncHealthTicker();
 }
 
 /** Release progress state for runs that are no longer live (lost, stopped, or finished by any path). */
@@ -918,6 +1056,11 @@ function pruneProgressCache(): void {
 /** Test seam: run ids whose progress state is held in memory. */
 export function progressCacheIdsForTests(): string[] {
     return [...progressCache.keys()];
+}
+
+/** Test seam: drop the in-memory progress fold, as a reloaded extension instance does. */
+export function forgetProgressCacheForTests(): void {
+    progressCache.clear();
 }
 
 /**
@@ -973,14 +1116,26 @@ function reconcileAbandonedRuns(now: number = Date.now()): number {
     return adopted;
 }
 
-function hasPendingFailureCallbacks(): boolean {
-    return listMetasForParent(process.pid).some((m) => ownedByThisParent(m) && m.callback !== false &&
-        m.completionCallbackPendingAt !== undefined && m.completionCallbackSentAt === undefined && m.completionCallbackSuppressedAt === undefined &&
-        !callbackSuppressionReason(m));
+/** Completion batches own their retry timer; only supervision keeps this one alive. */
+function syncHealthTicker(): void {
+    // A replaced instance never restarts supervision loops for a session it no
+    // longer owns; the live instance runs its own. It must still STOP one that is
+    // already armed: a run this instance launched before teardown can finish
+    // afterwards, and returning early here left the interval supervising a
+    // session that no longer exists (#625).
+    if (sessionTornDown) {
+        stopHealthTicker();
+        return;
+    }
+    if (needsMonitoring(listMetasForParent(process.pid)) || needsInterruptedSupervision()) ensureHealthTicker();
+    else stopHealthTicker();
 }
 
 /** Start the reconciliation loop if it isn't already running. */
 function ensureHealthTicker(): void {
+    // Not gated on `sessionTornDown`: a spawn always means the current session is
+    // doing new work. Only `syncHealthTicker` — the path a late child finalizer
+    // takes — stays closed in a replaced instance.
     if (healthTicker) return;
     healthTicker = setInterval(reconcileHealth, HEALTH_TICK_MS);
     healthTicker.unref?.(); // never keep the process alive on our account
@@ -1011,13 +1166,11 @@ export function setIdentityProbeForTests(probe: ProcessProbe | undefined): void 
 //
 // Human-facing TUI surface. Glue points, all gated on isNavigatorUiAvailable so
 // print/RPC sessions never see any of it:
-//   1. footer hint `← subagents · N` via the DEFAULT footer status mechanism
-//      (setStatus — the full footer is never replaced);
-//   2. an editor wrapper that intercepts bare ← only when the editor is empty
+//   1. an editor wrapper that intercepts bare ← only when the editor is empty
 //      and at least one non-dismissed current-parent run is running,
 //      delegating everything else to the wrapped
 //      editor (composition via navigator.mjs, tested with fakes);
-//   3. a focused overlay (ctx.ui.custom(..., { overlay: true })) listing the
+//   2. a focused overlay (ctx.ui.custom(..., { overlay: true })) listing the
 //      #44 navigatorVisibleRuns newest first, with Enter → live detail view
 //      that refreshes once per second (#46) and two-press `x` Close (#47).
 //      Detail + close-arm timers dispose on back, Escape, overlay close,
@@ -1124,15 +1277,12 @@ function navigatorCloseRun(id: string) {
     healthLogCache.delete(id);
     resetChildEventLogCursor(id);
     resetParseRunCursor(id);
+    syncHealthTicker();
+    // Close stops (or log-finalizes) the run, which is a terminal transition:
+    // queue its one completion callback so no terminal state is silent (#624).
+    // enqueueCompletionCallback is a no-op for runs that owe no callback.
+    if (healthPi) enqueueCompletionCallback(healthPi, id);
     return outcome;
-}
-
-/** Publish/clear the Close confirmation footer hint (TUI only). */
-function publishCloseConfirmHint(ctx: ExtensionContext, hint: string | null): void {
-    if (!isNavigatorUiAvailable(ctx)) return;
-    try {
-        ctx.ui.setStatus(CLOSE_CONFIRM_STATUS_KEY, hint ?? undefined);
-    } catch { /* ignore */ }
 }
 
 function statusTone(status: string): BackgroundWorkRow["statusTone"] {
@@ -1433,7 +1583,7 @@ function openNavigator(ctx: ExtensionContext, initialDetailId?: string): void {
     ensureNavigator(ctx);
 }
 
-/** Publish/clear the running-only `← subagents · N` footer hint (dirty-checked). */
+/** Refresh the shared navigator after run changes. */
 function updateNavigatorFooter(ctx: ExtensionContext | undefined): void {
     refreshBackgroundWorkNavigator(ctx);
 }
@@ -1471,19 +1621,260 @@ function resolvePiBinary(): string {
  * first-party finalizer (finalization.ts) so tests can exercise the durable
  * path without importing the pi package.
  */
-function finalizeRun(pi: ExtensionAPI, ctx: ExtensionContext, id: string, code: number | null): void {
+function finalizeRun(pi: ExtensionAPI, ctx: ExtensionContext | undefined, id: string, code: number | null): void {
     progressCache.delete(id);
+    directlySupervisedRunIds.delete(id);
     // Host-facing wrapper around first-party finalizer (finalization.ts).
     // Coherent child-exit evidence may supersede provisional orphaned/lost
     // reconciliation; finalization.ts enforces canExitFinalize + lifecycle authority.
-    const result = finalizeRunCore(id, code, {
+    finalizeRunCore(id, code, {
         renderWidget,
         notify: (message, level) => {
-            try { ctx.ui.notify(message, level); } catch { /* ignore */ }
+            try { ctx?.ui.notify(message, level); } catch { /* ignore */ }
         },
         sendMessage: () => enqueueCompletionCallback(pi, id),
     });
-    if (result.applied && hasPendingFailureCallbacks()) ensureHealthTicker();
+    syncHealthTicker();
+}
+
+/**
+ * Finalize a run whose supervision a previous session interrupted (`/reload`,
+ * a session switch, or a quit) once its process evidence is gone (#625).
+ *
+ * The instance that held the in-memory exit observer is gone, so nothing else
+ * reads the child's own log when the process disappears: health reconciliation
+ * alone would record an interrupted-but-finished run `lost`, hiding a result
+ * that is fully on disk. Only coherent terminal stream evidence is accepted
+ * (`agent_end` with every tool call closed); anything else keeps the existing
+ * reconciliation verdict, so no failure or completion is manufactured.
+ *
+ * Runs this instance launched are skipped: their exit observer finalizes them.
+ */
+function finalizeInterruptedRunFromLog(
+    pi: ExtensionAPI | undefined,
+    meta: RunMeta,
+    now: number,
+): boolean {
+    if (!pi) return false;
+    if (directlySupervisedRunIds.has(meta.id)) return false;
+    if (meta.supervisionInterruptedAt === undefined) return false;
+    // Process evidence still exists: the child keeps running, nothing to finalize.
+    if (reconcileRun(meta, realProcessProbe, now).status !== "lost") return false;
+    let run;
+    try { run = parseRunForLifecycle(meta.id); } catch { return false; }
+    if (!run.sawEnd || run.unmatchedToolCalls.length > 0) return false;
+    // Exit code is unknown after the observer is gone; the lifecycle authority
+    // classifies from the coherent stream instead of inventing one.
+    finalizeRun(pi, uiCtx, meta.id, null);
+    return true;
+}
+
+/**
+ * Does this process have to supervise this explicit interruption record (#625)?
+ *
+ * A run this parent launched is this session's own (#625 reload). A run left by
+ * a parent that is provably gone has no live owner at all — the restart case —
+ * so its recorded interruption is the only thing that can recover it. Anything
+ * else belongs to a live pi and is never adjudicated here.
+ */
+function ownsInterruptedSupervision(summary: Pick<RunMeta, "spawnPid" | "spawnPidStartTime" | "supervisionInterruptedAt">): boolean {
+    if (summary.supervisionInterruptedAt === undefined) return false;
+    return ownedByThisParent(summary) || isAbandonedByParent(summary, realProcessProbe);
+}
+
+/** True while an interrupted record still needs this process's supervision loop. */
+function needsInterruptedSupervision(): boolean {
+    try {
+        for (const summary of listMetas()) {
+            if (summary.status !== "running" && summary.status !== "orphaned") continue;
+            if (ownsInterruptedSupervision(summary)) return true;
+        }
+    } catch { /* best-effort scheduler gate */ }
+    return false;
+}
+
+/**
+ * Attempt log-evidence finalization for every interrupted run this process has
+ * to supervise: its own current-parent ones and the ones a dead parent left
+ * behind. Live children are never finalized (`finalizeInterruptedRunFromLog`
+ * requires the process evidence to be gone), so this only recovers a child that
+ * already finished on its own.
+ */
+function recoverInterruptedSubagents(pi: ExtensionAPI | undefined): number {
+    let recovered = 0;
+    const now = Date.now();
+    for (const summary of listMetas()) {
+        if (summary.status !== "running" && summary.status !== "orphaned") continue;
+        if (!ownsInterruptedSupervision(summary)) continue;
+        const meta = readMeta(summary.id);
+        if (!meta || (meta.status !== "running" && meta.status !== "orphaned")) continue;
+        try {
+            if (finalizeInterruptedRunFromLog(pi, meta, now)) recovered += 1;
+        } catch { /* best-effort at session start; the health ticker retries */ }
+    }
+    return recovered;
+}
+
+/**
+ * Re-prove a continuation's native history identity after its writer lease is held.
+ *
+ * `planContinuation` validated the saved conversation, but it validated a plan:
+ * between that read and admission another process's sweep can retire the shared
+ * workspace, the saved history, or the prior run record, and Pi's `--session`
+ * opens a missing path by creating a fresh conversation — a silent replacement
+ * instead of a refusal. Cleanup now takes the same per-conversation lock this
+ * admission takes, so re-reading here is reading a conversation nothing else can
+ * retire concurrently. Any change since validation refuses; the cached path is
+ * never reopened on the strength of the earlier check.
+ */
+function revalidateContinuationUnderLease(
+    plan: ContinuationPlan,
+    origin: RunCallbackOrigin | undefined,
+): void {
+    const current = readMeta(plan.prior.id);
+    if (!current) {
+        throw new ContinuationError(
+            `Cannot continue ${plan.prior.id}: its run record was removed while this launch was being prepared. ` +
+            `Its saved history is missing; restore the original history or launch a new run instead.`,
+        );
+    }
+    const fresh = planContinuation({
+        id: plan.prior.id,
+        prior: current,
+        origin,
+        others: listMetas(),
+    });
+    if (fresh.conversation.sessionId !== plan.conversation.sessionId || fresh.conversation.path !== plan.conversation.path) {
+        throw new ContinuationError(
+            `Cannot continue ${plan.prior.id}: the saved conversation it would reopen changed while this launch was being prepared ` +
+            `(${plan.conversation.path} -> ${fresh.conversation.path}). Launch a new run instead.`,
+        );
+    }
+}
+
+/**
+ * The removed launch flag, reported by name so an older caller is told what to
+ * do instead of having its request silently dropped.
+ */
+const RETAIN_SESSION_REMOVED =
+    "retain_session was removed: every saved conversation persists automatically. " +
+    "Omit it, and pass session_id to continue a saved conversation.";
+
+function assertNoRetiredLaunchOptions(value: object | undefined, label = ""): void {
+    if (value && (value as { retain_session?: unknown }).retain_session !== undefined) {
+        throw new Error(`${label}${RETAIN_SESSION_REMOVED}`);
+    }
+}
+
+function sameLaunchPath(left: unknown, right: string | undefined): boolean {
+    if (typeof left !== "string" || right === undefined) return false;
+    if (left === right) return true;
+    try { return canonicalizePath(left) === canonicalizePath(right); } catch { return false; }
+}
+
+function sameLaunchTools(left: unknown, right: string): boolean {
+    return typeof left === "string" && normalizeTools(left) === normalizeTools(right);
+}
+
+function sameLaunchRoles(left: unknown, right: string | readonly string[] | undefined): boolean {
+    if (typeof left === "string") return left === right;
+    if (Array.isArray(left) && Array.isArray(right)) {
+        return left.length === right.length && left.every((value, index) => value === right[index]);
+    }
+    return false;
+}
+
+function continuationLaunchConflicts(
+    job: Record<string, unknown>,
+    recipe: ContinuationPlan["recipe"],
+    options: { includeName: boolean },
+): string[] {
+    const conflicts: string[] = [];
+    const check = (key: string, same: (value: unknown) => boolean) => {
+        const value = job[key];
+        if (value !== undefined && !same(value)) conflicts.push(key);
+    };
+    if (options.includeName) check("name", (value) => value === recipe.name);
+    check("agent", (value) => value === recipe.agent);
+    check("role", (value) => sameLaunchRoles(value, recipe.role));
+    check("alias", (value) => value === recipe.alias);
+    check("tools", (value) => sameLaunchTools(value, recipe.tools));
+    check("exclude_tools", (value) => typeof value === "string" && normalizeTools(value) === normalizeTools(recipe.excludeTools ?? ""));
+    check("clean", (value) => value === recipe.clean);
+    check("sandbox", (value) => value === recipe.sandbox);
+    check("sandbox_dir", (value) => sameLaunchPath(value, recipe.sandboxDir));
+    check("cwd", (value) => sameLaunchPath(value, recipe.cwd));
+    check("git_clone_workspace", (value) => value === recipe.gitCloneWorkspace);
+    check("approve", (value) => value === recipe.approve);
+    check("allow_nested", (value) => value === recipe.allowNested);
+    return conflicts;
+}
+
+/**
+ * Refuse any launch-only option that does not reproduce the saved recipe.
+ * Matching values are allowed (a caller that repeats its original launch call is
+ * provably asking for the same thing); a missing option just keeps the recipe.
+ */
+function assertContinuationLaunchOptions(
+    job: Record<string, unknown>,
+    recipe: ContinuationPlan["recipe"],
+    label: string,
+    options: { includeName: boolean } = { includeName: true },
+): void {
+    if (job.retain_session !== undefined) throw new ContinuationError(`${label}${RETAIN_SESSION_REMOVED}`);
+    const conflicts = continuationLaunchConflicts(job, recipe, options);
+    if (conflicts.length === 0) return;
+    const named = conflicts.map((key) => `\`${key}\``).join(", ");
+    const prefix = label || "Cannot continue this saved conversation: ";
+    throw new ContinuationError(
+        `${prefix}${named} ${conflicts.length === 1 ? "conflicts" : "conflict"} with the saved launch recipe. ` +
+        `A continued conversation keeps the recipe it was launched with; omit ${conflicts.length === 1 ? "it" : "them"}. ` +
+        `A continuation accepts prompt, session_id, and optional model, thinking, callback, and timing overrides.`,
+    );
+}
+
+/**
+ * The attempt that currently owns a saved conversation: the LATEST attempt by
+ * `startedAt` (then id, so ties stay deterministic). Never pick an older
+ * completed sibling: that would branch history from a superseded attempt.
+ */
+function latestConversationAttempt(sessionId: string, metas: readonly RunMeta[]): RunMeta | undefined {
+    let latest: RunMeta | undefined;
+    for (const meta of metas) {
+        if (meta.sessionId !== sessionId) continue;
+        if (!latest || meta.startedAt > latest.startedAt
+            || (meta.startedAt === latest.startedAt && meta.id > latest.id)) latest = meta;
+    }
+    return latest;
+}
+
+/**
+ * Select a saved conversation by its exact native session id and validate it for
+ * one more attempt. `planContinuation` owns the refusals (a running/orphaned
+ * latest attempt, missing history or workspace, unsupported recipe), so a
+ * missing session is the only error added here. Nothing is ever recreated.
+ */
+function requestedSessionId(job: { session_id?: string; session_name?: string }, cwd: string): string | undefined {
+    if (job.session_id !== undefined && job.session_name !== undefined) {
+        throw new Error("Pass either session_id or session_name, not both.");
+    }
+    if (job.session_name !== undefined) {
+        if (typeof job.session_name !== "string") throw new Error("session_name must be a non-empty name.");
+        return selectSessionByName(listMetas(), job.session_name, (workspace) => isWithinWorkspace(workspace, cwd));
+    }
+    return job.session_id;
+}
+
+function continuationPlanFor(sessionId: string, origin: RunCallbackOrigin | undefined): ContinuationPlan {
+    const others = listMetas();
+    const latest = latestConversationAttempt(sessionId, others);
+    if (!latest) {
+        throw new ContinuationError(
+            `Cannot continue session ${sessionId}: no saved subagent conversation has that native session id. ` +
+            `Check the session id reported by the launching attempt, or omit session_id to start a new conversation.`,
+        );
+    }
+    return planContinuation({ id: latest.id, prior: latest, origin, others });
 }
 
 function timingSchemaFields() {
@@ -1501,6 +1892,7 @@ function catalogRoleSchema(purpose: string) {
 }
 
 export default function (pi: ExtensionAPI) {
+    initializeNavigatorPanels(pi);
     const agentSessionSettings = createAgentSessionSettings(pi);
     let catalogModelRegistry: ExtensionContext["modelRegistry"] | undefined;
     let delegationOverride: DelegationMode | undefined;
@@ -1522,6 +1914,13 @@ export default function (pi: ExtensionAPI) {
         pi.appendEntry("pi-better-subagents-delegation", { version: 1, mode: null });
     };
     const activeDelegationMode = (): DelegationMode => delegationOverride ?? normalizeDelegationMode(loadConfig().delegationMode);
+    const countRunning = () =>
+        listActiveMetasForParent(process.pid).filter((meta) => effectiveStatus(meta) === "running").length;
+    const effectiveSettings = () => effectiveSubagentSettings({
+        delegationMode: activeDelegationMode(), maxConcurrent: activeConcurrencyCap(),
+        sources: { delegationMode: delegationOverride ? "session" : "config",
+            maxConcurrent: capOverride !== undefined ? "session" : "config" },
+    }, countRunning(), getSharedCapacityGate(countRunning).pending);
     const saveSettings = (): { ok: boolean; message: string } => {
         try {
             writeSubagentSettings({ delegationMode: activeDelegationMode(), maxConcurrent: activeConcurrencyCap() });
@@ -1579,6 +1978,17 @@ export default function (pi: ExtensionAPI) {
     ensureSubagentProvider();
     registerSubagentsGoalProvider(pi);
     observeSandboxPermissions(pi);
+    // Record admission identities during registration: inventory actions are not
+    // available while extensions load. A later replacement must fail the identity check.
+    const registeredSpawnSchemas = new Map<string, object>();
+    const registerSpawnTool: ExtensionAPI["registerTool"] = (definition) => {
+        registeredSpawnSchemas.set(definition.name, definition.parameters);
+        pi.registerTool(definition);
+    };
+    announceExecutionAdapter(pi, {
+        parametersFor: (name) => registeredSpawnSchemas.get(name),
+        runApplication: (TASK_BUILTINS as readonly string[]).includes(RUN_APPLICATION),
+    });
     let acceptanceResultToolRef: { execute: (toolCallId: string, params: { id: string }) => Promise<unknown> } | undefined;
     function publishAcceptanceHooks(tool?: NonNullable<typeof acceptanceResultToolRef>): void {
         if (process.env.PI_CATALOG_ACCEPTANCE_PROBE !== "1") return;
@@ -1662,6 +2072,13 @@ export default function (pi: ExtensionAPI) {
         git_clone_workspace?: boolean; approve?: boolean; allow_nested?: boolean;
         agent?: string; role?: string | readonly string[]; alias?: string;
         catalog?: CatalogRunRecord; catalogResolved?: boolean;
+        /**
+         * Native session id of a saved conversation to continue. Omit for a
+         * brand-new conversation; an attempt's own id is its session id only on
+         * a fresh launch, so follow-ups use the session id the launch reported.
+         */
+        session_id?: string;
+        session_name?: string;
     } & TimingParams;
 
     /**
@@ -1674,6 +2091,7 @@ export default function (pi: ExtensionAPI) {
         ctx: ExtensionContext,
         p: SpawnParams,
         batchInfo?: { batchId: string; batchName?: string },
+        resume?: ContinuationPlan,
     ): Promise<{
         id: string;
         meta: RunMeta;
@@ -1685,13 +2103,37 @@ export default function (pi: ExtensionAPI) {
         modelNote?: string;
     }> {
         assertThinkingLevel(p.thinking);
-        const permissionPlan = resolveSubagentPermissions(pi, p.sandbox);
+        // A continuation re-applies the CURRENT mandatory human permissions to its
+        // frozen confinement intent. Historical metadata can never widen authority,
+        // and a profile that would change confinement refuses instead of silently
+        // moving a live conversation into a different sandbox.
+        const permissionPlan = resolveSubagentPermissions(pi, resume ? resume.recipe.sandbox : p.sandbox);
+        if (resume && permissionPlan.sandboxEnabled !== resume.recipe.sandbox) {
+            throw new ContinuationError(
+                `Cannot continue ${resume.prior.id}: current sandbox permissions would change its confinement. ` +
+                `Launch a new run instead of continuing this conversation.`,
+            );
+        }
         const cfg = loadConfig();
         // Harness-owned timing (soft deadline, ceiling, stuck window); validated before any side effect.
         resolveRunTiming({ params: p, settings: cfg, env: process.env, startedAt: 0 });
         let model: string | undefined;
         let thinking: ThinkingLevel | undefined;
-        if (p.catalogResolved === true) {
+        if (resume) {
+            // Preserve the recipe's effective model and effort. Only an explicit
+            // per-attempt model/effort acts as an escalation; a bare foreground or
+            // configured default must not silently replace the owner's choice.
+            assertThinkingLevel(resume.recipe.effort, "saved effort");
+            const baseModel = parseModelThinking(resume.recipe.model, resume.recipe.effort);
+            if (p.model !== undefined) {
+                const explicit = parseModelThinking(p.model, p.thinking ?? baseModel.thinking);
+                model = explicit.model;
+                thinking = explicit.thinking;
+            } else {
+                model = baseModel.model;
+                thinking = p.thinking ?? baseModel.thinking;
+            }
+        } else if (p.catalogResolved === true) {
             model = p.model;
             thinking = p.thinking;
         } else {
@@ -1702,10 +2144,12 @@ export default function (pi: ExtensionAPI) {
         }
         // Best-effort daily hygiene for durable tmp state. The marker makes
         // this effectively free after the first subagent launch each day.
-        runDailyCleanupOnce({ config: cfg });
+        // Resume has already validated this history. Retiring it here would let
+        // native --session create an empty replacement before the child runs.
+        if (!resume) runDailyCleanupOnce({ config: cfg });
         // Age retires history; this bounds the peak one busy day can reach.
         // Rate-limited inside cleanup.ts, and never on the UI hot path.
-        const capped = enforceRegistrySizeCapOnce({ config: cfg });
+        const capped = resume ? { removed: [] } : enforceRegistrySizeCapOnce({ config: cfg });
         for (const id of capped.removed) {
             spendCache.delete(id);
             healthLogCache.delete(id);
@@ -1715,199 +2159,373 @@ export default function (pi: ExtensionAPI) {
         const callbackOrigin = callbackOriginFromContext(ctx);
         activeCallbackOrigin = callbackOrigin;
 
-        // Sandbox is ON by default. sandbox_dir moves the confinement + working
+        // Sandbox is opt-in. sandbox_dir moves the confinement + working
         // dir elsewhere. git_clone_workspace prepares a disposable clone with
         // .git/ inside the writable root for Git-mutating sandboxed subagents.
         const sandboxEnabled = permissionPlan.sandboxEnabled;
 
         const id = nextRunId();
-        const childSessionDir = sandboxEnabled ? join(sessionsDir(), id) : sessionsDir();
+        // Attempt identity (`id`) and conversation identity (`sessionId`) are
+        // separate. A continuation keeps the native session; only the attempt is new.
+        const sessionId = resume ? resume.conversation.sessionId : id;
+        const rootRunId = resume ? resume.rootRunId : id;
+        const childSessionDir = resume
+            ? resume.recipe.sessionDir
+            : sandboxEnabled ? join(sessionsDir(), id) : sessionsDir();
         // The disposable clone this launch owns (removed if the spawn fails); a caller's sandbox_dir is not ours.
-        const ownedCloneWorkspace = !p.sandbox_dir && sandboxEnabled && p.git_clone_workspace ? taskWorkspaceDir(id) : undefined;
-        mkdirSync(childSessionDir, { recursive: true });
-        mkdirSync(runDir(id), { recursive: true });
-
-        const workspace = resolveSubagentWorkspace({
-            ctxCwd: ctx.cwd,
-            cwd: p.cwd,
-            sandboxDir: p.sandbox_dir ?? ownedCloneWorkspace,
-            gitCloneWorkspace: p.git_clone_workspace,
-            runId: id,
-            runDirPath: runDir(id),
-            sandboxEnabled,
-        });
-        const cwd = workspace.cwd;
-        const requestedSandboxDir = workspace.requestedSandboxDir;
-
-        if (requestedSandboxDir) mkdirSync(requestedSandboxDir, { recursive: true });
-        writeFileSync(promptPathFor(id), p.prompt);
-
-        const clean = p.clean === true;
-
-        let allow = normalizeTools(
-            p.tools ?? cfg.defaultTools ?? (clean ? SAFE_CLEAN_TOOLS : SAFE_DEFAULT_TOOLS),
-        );
-        if (p.allow_nested) {
-            const have = new Set(allow.split(","));
-            allow = [...allow.split(","), ...SUBAGENT_TOOLS.filter((t) => !have.has(t))]
-                .filter(Boolean).join(",");
-        }
-
-        // A confined child gets extension tools only through /sandbox Subagents · Tools (ADR 0009):
-        // the guarded apply_patch adapter, and trusted tools admitted by name and package.
-        const requestedExcludes = new Set((p.exclude_tools ?? "").split(",").map((t) => t.trim()).filter(Boolean));
-        if (sandboxEnabled && !clean) {
-            const names = allow.split(",").filter(Boolean);
-            // Models reach for apply_patch whenever they may edit; ticked trusted tools join the default set.
-            if (permissionPlan.tools.applyPatch && names.some((name) => name === "edit" || name === "write")) names.push(APPLY_PATCH);
-            if (p.tools === undefined) names.push(...permissionPlan.tools.trusted.map((entry) => entry.name));
-            allow = [...new Set(names)].join(",");
-        }
-        if (sandboxEnabled && p.tools === undefined && permissionPlan.permissions?.processAccess === "read") {
-            allow = [...new Set([...allow.split(","), "process_list"])].join(",");
-        }
-        const taskTools = sandboxEnabled ? planTaskTools({
-            requested: allow.split(",").filter((name) => name && !requestedExcludes.has(name)),
-            settings: permissionPlan.tools, network: permissionPlan.permissions?.network ?? true,
-            processAccess: permissionPlan.permissions?.processAccess ?? "off",
-            builtins: TASK_BUILTINS, registered: pi.getAllTools?.() ?? [],
-            toolExtensions: cfg.toolExtensions, resolvePath: resolveExtensionPath,
-        }) : undefined;
-        const resolution = resolveExtensions({
-            // process_list is installed by the mandatory task guard, not an SDK builtin or extension mapping.
-            tools: sandboxEnabled ? allow.split(",").filter((name) => name !== "process_list" && (TASK_BUILTINS as readonly string[]).includes(name)).join(",") : allow,
-            model, clean, allowNested: sandboxEnabled ? false : p.allow_nested, config: cfg,
-        });
-        const { args: resolvedExtArgs, missing } = extensionArgs(resolution, resolveExtensionPath);
-        const trustedExtArgs = [...new Set(taskTools?.trusted.map((tool) => tool.loadPath) ?? [])]
-            .filter((path) => !resolvedExtArgs.includes(path)).flatMap((path) => ["--extension", path]);
-        // The harness's own child control extension (no tools, no command I/O) rides along in every
-        // mode, including clean: it is how a soft-deadline steer reaches the child session.
-        const extArgs = [...resolvedExtArgs, ...trustedExtArgs, "--extension", childSteerExtensionPath()]
-            .map((value, index, all) => sandboxEnabled && all[index - 1] === "--extension" ? canonicalizePath(value) : value);
-        if (sandboxEnabled && resolution.mode === "inherit") {
-            throw new Error("Task confinement requires explicit extensions; inheritExtensions is unsupported while sandboxing is enabled.");
-        }
-        if (missing.length) {
-            throw new Error(
-                `Subagent needs extension(s) that are not installed: ${missing.join(", ")}. ` +
-                `Install them, drop the tools that require them, or remove the mapping from config.json.`,
-            );
-        }
-
-        const excludes = new Set<string>();
-        if (p.exclude_tools) for (const t of p.exclude_tools.split(",")) if (t.trim()) excludes.add(t.trim());
-        if (!p.allow_nested && resolution.mode === "inherit") {
-            for (const t of SUBAGENT_TOOLS) excludes.add(t);
-        }
-
-        const args = [
-            "-p", "--mode", "json",
-            "--session-dir", childSessionDir,
-            "--session-id", id,
-            ...extArgs,
-            ...(model ? ["--model", model] : []),
-            ...(thinking ? ["--thinking", thinking] : []),
-            ...(allow && !sandboxEnabled ? ["--tools", allow] : []),
-            ...(excludes.size ? ["--exclude-tools", [...excludes].join(",")] : []),
-            ...(sandboxEnabled ? ["--no-builtin-tools", "--no-approve"] : p.approve ? ["--approve"] : []),
-            p.prompt,
-        ];
-
-        const piBin = resolvePiBinary();
-        const selectedTools = allow.split(",").filter((name) => name && !excludes.has(name));
-        const unavailable = taskTools?.refused.filter((tool) => selectedTools.includes(tool.name)) ?? [];
-        const unavailableTools = unavailable.map((tool) => tool.name);
-        if (sandboxEnabled && selectedTools.length && unavailableTools.length === selectedTools.length) {
-            throw new Error(`No requested tool has a verified task sandbox adapter: ${unavailable.map((tool) => `${tool.name} (${tool.reason})`).join(", ")}.`);
-        }
-        const taskRuntime = sandboxEnabled && requestedSandboxDir ? prepareTaskRuntime({
-            root: requestedSandboxDir, controlDir: join(runDir(id), "control"), piBin,
-            tools: selectedTools, permissions: permissionPlan.permissions,
-            applyPatch: taskTools?.applyPatch === true,
-            extensionTools: taskTools?.trusted.map(({ loadPath: _loadPath, ...tool }) => tool) ?? [],
-            extensionPaths: extArgs.flatMap((arg, index) => arg === "--extension" && extArgs[index + 1] ? [extArgs[index + 1]!] : []),
-            runtimeRoots: [baseDir()],
-        }) : undefined;
-        if (sandboxEnabled && !taskRuntime) throw new Error("Task sandbox has no workspace; refusing an unconfined child.");
-        // Parent-authored trust record, written before the child can run (#325).
-        if (taskRuntime) recordTaskRuntimeProvenance(id);
-        // Outside project = Write or Write & delete lets the run change files
-        // outside its workspace: start an APFS local snapshot (macOS, in the
-        // background; a failure is reported, never blocks the run).
-        const snapshot = taskRuntime ? takeRecoverySnapshot(taskRuntime.policy.permissions) : undefined;
-        if (snapshot?.started) {
-            void snapshot.done.then((outcome) => {
-                if (!outcome.ok) ctx.ui?.notify?.(`Subagent ${id}: recovery snapshot failed (run continues): ${outcome.detail}`, "warning");
-            });
-        }
-        const cmd = taskRuntime ? { file: taskRuntime.file, fileArgs: [...taskRuntime.fileArgs, ...args] } : { file: piBin, fileArgs: args };
-        const sandboxDir = taskRuntime ? requestedSandboxDir : undefined;
-
-        let spawned: ReturnType<typeof spawnDetached>;
+        // A continuation never prepares another clone: the recipe's workspace already
+        // holds the prior attempt's uncommitted work.
+        const ownedCloneWorkspace = !resume && !p.sandbox_dir && sandboxEnabled && p.git_clone_workspace ? taskWorkspaceDir(id) : undefined;
+        // A launch attempt only becomes a run when `writeMeta` commits. Until
+        // then everything it creates (prompt, control/, provenance, its own
+        // session dir, clone workspace, task scratch) belongs to the attempt and
+        // must go if it fails, so no unreadable record is left in the registry
+        // (#325, #332, #623).
+        let lease: ConversationLease | undefined;
+        let spawned: ReturnType<typeof spawnDetached> | undefined;
+        let launchScratch: string | undefined;
+        let committed = false;
         try {
+            if (!resume) mkdirSync(childSessionDir, { recursive: true });
+            mkdirSync(runDir(id), { recursive: true });
+            // Claim the directory before anything else is prepared. Until
+            // `meta.json` exists this claim is the only ownership evidence, so a
+            // concurrent purge can tell this live attempt from dead launch debris
+            // (#623 R1). The outer catch drops the whole directory on failure.
+            recordLaunchAttempt(id);
+
+            const workspace = resume
+                ? { cwd: resume.recipe.cwd, requestedSandboxDir: resume.recipe.sandboxDir }
+                : resolveSubagentWorkspace({
+                    ctxCwd: ctx.cwd,
+                    cwd: p.cwd,
+                    sandboxDir: p.sandbox_dir ?? ownedCloneWorkspace,
+                    gitCloneWorkspace: p.git_clone_workspace,
+                    runId: id,
+                    runDirPath: runDir(id),
+                    sandboxEnabled,
+                });
+            const cwd = workspace.cwd;
+            const requestedSandboxDir = workspace.requestedSandboxDir;
+
+            if (requestedSandboxDir) mkdirSync(requestedSandboxDir, { recursive: true });
+            writeFileSync(promptPathFor(id), p.prompt);
+
+            // A continuation keeps the recipe's launch intent; only current
+            // permission-driven adjustments are re-derived from it.
+            const requestedTools = resume ? resume.recipe.tools : p.tools;
+            const requestedExcludeTools = resume ? resume.recipe.excludeTools ?? "" : p.exclude_tools ?? "";
+            const clean = resume ? resume.recipe.clean : p.clean === true;
+            const allowNested = resume ? resume.recipe.allowNested : p.allow_nested === true;
+            const approve = resume ? resume.recipe.approve : p.approve === true;
+            const gitCloneWorkspace = resume ? resume.recipe.gitCloneWorkspace : p.git_clone_workspace === true;
+            const callbackEnabled = resume ? p.callback ?? resume.recipe.callback : p.callback !== false;
+            const launchName = resume ? resume.recipe.name : p.name;
+            // The frozen launch snapshot is the same shape a fresh spawn freezes.
+            const launchCatalog: RunMeta["catalog"] = resume
+                ? resume.recipe.catalog
+                : p.catalog as unknown as RunMeta["catalog"] | undefined;
+
+            let allow = normalizeTools(
+                requestedTools ?? cfg.defaultTools ?? (clean ? SAFE_CLEAN_TOOLS : SAFE_DEFAULT_TOOLS),
+            );
+            if (allowNested) {
+                const have = new Set(allow.split(","));
+                allow = [...allow.split(","), ...SUBAGENT_TOOLS.filter((t) => !have.has(t))]
+                    .filter(Boolean).join(",");
+            }
+
+            // A confined child gets extension tools only through /sandbox Subagents · Tools (ADR 0009):
+            // the guarded apply_patch adapter, and trusted tools admitted by name and package.
+            const requestedExcludes = new Set(requestedExcludeTools.split(",").map((t) => t.trim()).filter(Boolean));
+            if (sandboxEnabled && !clean) {
+                const names = allow.split(",").filter(Boolean);
+                // Models reach for apply_patch whenever they may edit; ticked trusted tools join the default set.
+                if (permissionPlan.tools.applyPatch && names.some((name) => name === "edit" || name === "write")) names.push(APPLY_PATCH);
+                if (requestedTools === undefined) names.push(...permissionPlan.tools.trusted.map((entry) => entry.name));
+                allow = [...new Set(names)].join(",");
+            }
+            if (sandboxEnabled && requestedTools === undefined && permissionPlan.permissions?.processAccess === "read") {
+                allow = [...new Set([...allow.split(","), "process_list"])].join(",");
+            }
+            // Shell Off confines the child to directly launched applications: a requested bash
+            // becomes the guarded run_application builtin. Exclusions stay exclusions (an excluded
+            // run_application leaves bash out rather than restoring it), and a read-only loadout
+            // keeps no command capability at all.
+            const commandSettings = resolveCommandSettings(permissionPlan.permissions);
+            if (sandboxEnabled && !commandSettings.shell) {
+                allow = applyDirectApplicationLoadout(allow.split(",").filter(Boolean), {
+                    shell: false, excluded: requestedExcludes,
+                }).tools.join(",");
+            }
+            const taskTools = sandboxEnabled ? planTaskTools({
+                requested: allow.split(",").filter((name) => name && !requestedExcludes.has(name)),
+                settings: permissionPlan.tools, network: permissionPlan.permissions?.network ?? true,
+                processAccess: permissionPlan.permissions?.processAccess ?? "off",
+                builtins: [...TASK_BUILTINS, "codemode"], registered: pi.getAllTools?.() ?? [],
+                toolExtensions: cfg.toolExtensions, resolvePath: resolveExtensionPath,
+            }) : undefined;
+            const dependencyOptions = {
+                model, virtual: (() => {
+                    const slash = model?.indexOf("/") ?? -1;
+                    return slash > 0 && ctx.modelRegistry?.find?.(model!.slice(0, slash), model!.slice(slash + 1))?.api === "pi-virtual";
+                })(), config: cfg, resolvePath: resolveExtensionPath,
+                configPaths: [configPath(), join(selfDir(), "config.json")],
+            };
+            const { resolution, fullResolution } = await resolveChildLaunch({ ...dependencyOptions, resolution: resolveExtensions({
+                // Only SDK builtins reach `--tools` and extension resolution: process_list and run_application
+                // are task builtins that the mandatory guard installs and activates itself.
+                tools: sandboxEnabled ? allow.split(",").filter((name) => (SDK_BUILTIN_TOOLS as readonly string[]).includes(name)).join(",") : allow,
+                model, clean, allowNested: sandboxEnabled ? false : allowNested, config: cfg,
+            }) }, taskTools?.trusted.map(tool => tool.loadPath) ?? []);
+            const { args: resolvedExtArgs, missing } = extensionArgs(resolution, (spec) => resolution.paths[spec] ?? resolveExtensionPath(spec));
+            const trustedExtArgs = fullResolution.specs.map(spec => fullResolution.paths[spec])
+                .filter(path => !resolvedExtArgs.includes(path)).flatMap(path => ["--extension", path]);
+            // Harness child controls ride along in every mode, including clean and unsandboxed runs.
+            // They deliver deadline steers and keep external monitoring with the coordinator.
+            const codemodeArgs = !sandboxEnabled && allow.split(",").includes("codemode") && !requestedExcludes.has("codemode")
+                ? ["--extension", join(selfDir(), "child-codemode.ts")] : [];
+            const extArgs = [...resolvedExtArgs, ...trustedExtArgs, ...codemodeArgs,
+                "--extension", childSteerExtensionPath(), "--extension", join(selfDir(), "child-ownership.ts")]
+                .map((value, index, all) => sandboxEnabled && all[index - 1] === "--extension" ? canonicalizePath(value) : value);
+            const baseExtensionArgs = [...resolvedExtArgs, ...codemodeArgs,
+                "--extension", childSteerExtensionPath(), "--extension", join(selfDir(), "child-ownership.ts")]
+                .map((value, index, all) => sandboxEnabled && all[index - 1] === "--extension" ? canonicalizePath(value) : value);
+            if (resume?.recipe.extensionArgs) {
+                // A model escalation may change provider auth, but an unchanged tool
+                // must not silently switch implementations with current configuration.
+                const reference = model === resume.recipe.model ? resolution : await resolveChildClosure({
+                    ...dependencyOptions, model: resume.recipe.model, virtual: false, resolution: resolveExtensions({
+                    tools: sandboxEnabled ? allow.split(",").filter((name) => (SDK_BUILTIN_TOOLS as readonly string[]).includes(name)).join(",") : allow,
+                    model: resume.recipe.model, clean, allowNested: sandboxEnabled ? false : allowNested, config: cfg,
+                }) });
+                const referenceArgs = [...extensionArgs(reference, (spec) => reference.paths[spec] ?? resolveExtensionPath(spec)).args, ...codemodeArgs,
+                    ...(!resume.recipe.baseExtensionArgs ? trustedExtArgs : []),
+                    "--extension", childSteerExtensionPath(), "--extension", join(selfDir(), "child-ownership.ts")]
+                    .map((value, index, all) => sandboxEnabled && all[index - 1] === "--extension" ? canonicalizePath(value) : value);
+                assertContinuationExtensions(resume.prior.id, resume.recipe,
+                    referenceArgs, taskTools?.trusted ?? []);
+            }
+            if (sandboxEnabled && resolution.mode === "inherit") {
+                throw new Error("Task confinement requires explicit extensions; inheritExtensions is unsupported while sandboxing is enabled.");
+            }
+            if (missing.length) {
+                throw new Error(
+                    `Subagent needs extension(s) that are not installed: ${missing.join(", ")}. ` +
+                    `Install them, drop the tools that require them, or remove the mapping from config.json.`,
+                );
+            }
+
+            const excludes = new Set<string>();
+            if (requestedExcludeTools) for (const t of requestedExcludeTools.split(",")) if (t.trim()) excludes.add(t.trim());
+            if (!allowNested && resolution.mode === "inherit") {
+                for (const t of SUBAGENT_TOOLS) excludes.add(t);
+            }
+
+            // A continuation reopens the exact saved conversation with `--session`;
+            // never `--session-id`, which would create a replacement session when the
+            // history is missing, and never both (Pi rejects the combination).
+            const sessionArgs = resume
+                ? ["--session", resume.conversation.path, "--session-dir", childSessionDir]
+                : ["--session-dir", childSessionDir, "--session-id", id];
+            const args = [
+                "-p", "--mode", "json",
+                ...sessionArgs,
+                ...extArgs,
+                ...(model ? ["--model", model] : []),
+                ...(thinking ? ["--thinking", thinking] : []),
+                ...(allow && !sandboxEnabled ? ["--tools", allow] : []),
+                ...(excludes.size ? ["--exclude-tools", [...excludes].join(",")] : []),
+                ...(sandboxEnabled ? ["--no-builtin-tools", "--no-approve"] : approve ? ["--approve"] : []),
+                p.prompt,
+            ];
+
+            const piBin = resolvePiBinary();
+            const selectedTools = allow.split(",").filter((name) => name && !excludes.has(name));
+            const unavailable = taskTools?.refused.filter((tool) => selectedTools.includes(tool.name)) ?? [];
+            const unavailableTools = unavailable.map((tool) => tool.name);
+            if (sandboxEnabled && selectedTools.length && unavailableTools.length === selectedTools.length) {
+                throw new Error(`No requested tool has a verified task sandbox adapter: ${unavailable.map((tool) => `${tool.name} (${tool.reason})`).join(", ")}.`);
+            }
+            const taskRuntime = sandboxEnabled && requestedSandboxDir ? prepareTaskRuntime({
+                root: requestedSandboxDir, controlDir: join(runDir(id), "control"), piBin,
+                tools: selectedTools,
+                permissions: permissionPlan.permissions && { ...permissionPlan.permissions, ...commandSettings },
+                applyPatch: taskTools?.applyPatch === true,
+                extensionTools: taskTools?.trusted.map(({ loadPath: _loadPath, ...tool }) => tool) ?? [],
+                extensionPaths: extArgs.flatMap((arg, index) => arg === "--extension" && extArgs[index + 1] ? [extArgs[index + 1]!] : []),
+                runtimeRoots: [baseDir()],
+            }) : undefined;
+            launchScratch = taskRuntime?.policy.scratch;
+            if (sandboxEnabled && !taskRuntime) throw new Error("Task sandbox has no workspace; refusing an unconfined child.");
+            // Parent-authored trust record, written before the child can run (#325).
+            if (taskRuntime) recordTaskRuntimeProvenance(id);
+            // Outside project = Write or Write & delete lets the run change files
+            // outside its workspace: start an APFS local snapshot (macOS, in the
+            // background; a failure is reported, never blocks the run).
+            const snapshot = taskRuntime ? takeRecoverySnapshot(taskRuntime.policy.permissions) : undefined;
+            if (snapshot?.started) {
+                void snapshot.done.then((outcome) => {
+                    if (outcome.ok) return;
+                    // The snapshot can finish after the session was replaced and ctx went stale.
+                    try { ctx.ui?.notify?.(`Subagent ${id}: recovery snapshot failed (run continues): ${outcome.detail}`, "warning"); } catch { /* ignore */ }
+                });
+            }
+            const cmd = taskRuntime ? { file: taskRuntime.file, fileArgs: [...taskRuntime.fileArgs, ...args] } : { file: process.execPath, fileArgs: [join(selfDir(), "child-runtime.mjs"), piBin, ...args] };
+            const sandboxDir = taskRuntime ? requestedSandboxDir : undefined;
+
+            // Reservations prevent competing admissions, but do not grandfather
+            // unstarted work after a cap reduction. No await separates this live
+            // occupancy check, child creation, and the running metadata below.
+            const maxConcurrent = activeConcurrencyCap();
+            if (countRunning() >= maxConcurrent) {
+                throw new Error(`Max concurrent subagents (${maxConcurrent}) reached. Stop or let some finish first.`);
+            }
+            // One writer per conversation, held across admission, child lifetime,
+            // and finalization. A live duplicate continuation is refused instead of
+            // letting two processes rewrite one session file. A fresh launch has a
+            // brand-new native session id, so it cannot contend with anyone and
+            // needs no lease; every continuation does.
+            if (resume) {
+                lease = acquireConversationLease({ sessionId, attemptId: id });
+            }
+            // The lease is the first moment no other process can retire this
+            // conversation: re-prove the history identity the cached plan was
+            // built from, so `--session` can never reopen a file another sweep
+            // removed as an empty replacement.
+            if (resume) revalidateContinuationUnderLease(resume, callbackOrigin);
+            const preflightPath = join(runDir(id), "child-preflight.json");
+            writeFileSync(preflightPath, JSON.stringify({ ...fullResolution, model, tools: selectedTools,
+                configSnapshot: configSnapshot([dirname(configPath()), join(cwd, ".pi")]),
+            }));
             spawned = spawnDetached({ file: cmd.file, fileArgs: cmd.fileArgs, cwd, logPath: logPathFor(id),
-                env: { [STEER_FILE_ENV]: steerPathFor(id) } });
+                env: { [STEER_FILE_ENV]: steerPathFor(id), [PREFLIGHT_ENV]: preflightPath } });
+            // Record process identity (pgid, start-time token) so health
+            // reconciliation can tell a supervised child from a recycled pid
+            // or an orphaned process group (#63). Best-effort: when the OS
+            // probes are unavailable the fields stay absent and the run is
+            // reconciled via the conservative old-metadata path.
+            const identity = captureProcessIdentity(spawned.pid, spawnIdentityProbe);
+            const startedAt = Date.now();
+            // The effective launch recipe is frozen on the attempt so a later
+            // continuation can reproduce its runtime intent without re-resolving the
+            // catalog or guessing from current configuration.
+            const recipe = buildLaunchRecipe({
+                attemptId: id,
+                sessionId,
+                sessionDir: childSessionDir,
+                cwd,
+                model,
+                effort: thinking,
+                tools: allow,
+                excludeTools: requestedExcludes.size ? [...requestedExcludes].join(",") : undefined,
+                clean,
+                allowNested,
+                approve,
+                sandbox: sandboxEnabled,
+                sandboxDir: requestedSandboxDir,
+                gitCloneWorkspace,
+                callback: callbackEnabled,
+                name: launchName,
+                agent: resume ? resume.recipe.agent : p.agent,
+                role: resume ? resume.recipe.role : p.role,
+                alias: resume ? resume.recipe.alias : p.alias,
+                catalog: launchCatalog,
+                extensionArgs: extArgs,
+                baseExtensionArgs,
+                trustedExtensions: resume?.recipe.trustedExtensions ?? taskTools?.trusted.map(({ name, package: owner, loadPath }) => ({ name, package: owner, loadPath })),
+            });
+
+            const meta: RunMeta = {
+                id, name: launchName, status: "running",
+                pid: spawned.pid, spawnPid: process.pid, spawnPidStartTime: parentStartToken(), model,
+                effort: thinking, cwd,
+                ...identity,
+                promptPreview: p.prompt.slice(0, 200),
+                startedAt, logPath: logPathFor(id), sessionId,
+                rootRunId,
+                ...(resume ? { resumedFrom: resume.prior.id } : {}),
+                recipe,
+                callbackOrigin,
+                sandbox: sandboxDir, taskRuntime: Boolean(taskRuntime), taskScratch: taskRuntime?.policy.scratch, callback: callbackEnabled,
+                ...batchInfo,
+                // The launch record is JSON. Registry freezes that value; it does not
+                // require the resolver's nominal type to carry an index signature.
+                ...(launchCatalog ? { catalog: launchCatalog as unknown as RunMeta["catalog"] } : {}),
+                timing: resolveRunTiming({ params: p, settings: cfg, env: process.env, startedAt }),
+            };
+            // This instance holds the exit observer for a run it actually
+            // started; only it can finalize on the exit event (#625).
+            directlySupervisedRunIds.add(id);
+            // A launch is live work of the current session, so an earlier
+            // teardown of this instance no longer applies. Without this the
+            // teardown latch would keep supervision from ever settling again
+            // for a run started after it (#625).
+            sessionTornDown = false;
+            // Register exit supervision before any fallible post-spawn publication.
+            // A failed metadata write must not strand a running child without a close
+            // handler; the lease stays held until that child has actually exited.
+            void spawned.exit.then((code) => {
+                try { finalizeRun(pi, ctx, id, code); }
+                finally { lease?.release(); }
+            });
+            writeMeta(meta);
+            committed = true;
+            // `meta.json` is now the record of this run; the claim has served its
+            // purpose. Best effort: a leftover claim is inert while metadata exists.
+            clearLaunchAttempt(id);
+
+            uiCtx = ctx;
+            ensureTicker();
+            // Start periodic supervision reconciliation (self-stops when idle).
+            ensureHealthTicker();
+            // Footer hint: a visible run now exists, so `← background work · N` shows.
+            updateNavigatorFooter(ctx);
+
+            const toolSummary = taskTools ? describeTaskTools(taskTools) : undefined;
+            const runtime = resolution.mode === "inherit"
+                ? `Runtime: ALL installed extensions (inheritExtensions) — mid-turn drain risk\n`
+                : toolSummary
+                    ? `Runtime: isolated · ${toolSummary}${resolution.specs.length ? ` · extensions ${resolution.specs.join(", ")}` : ""}\n`
+                    : resolution.specs.length
+                    ? `Runtime: isolated · extensions ${resolution.specs.join(", ")}\n`
+                    : `Runtime: isolated · built-in tools only\n`;
+            const warn = (unavailable.length ? `Task sandbox: ${unavailable.map((tool) => `${tool.name} disabled (${tool.reason})`).join("; ")}.\n` : "") +
+                (!sandboxEnabled && resolution.unmapped.length
+                ? `NOTE: no extension mapped for ${resolution.unmapped.join(", ")} — ` +
+                  `${resolution.unmapped.length > 1 ? "these tools" : "this tool"} will NOT exist in the child. ` +
+                  `Add a toolExtensions entry in config.json.\n`
+                : "");
+            const modelNote = catalogDefaultNote(resume ? undefined : p.catalog, model, thinking);
+            return { id, meta, spawned, runtime: runtime + (meta.timing ? `${formatTimingLimits(meta.timing, startedAt)}\n` : ""), warn, sandboxDir, modelNote };
         } catch (error) {
-            // Nothing references the run yet (no metadata): drop its directory (prompt, control/), its
-            // provenance record, its session directory, its clone workspace, and the task scratch, so a
-            // failed launch leaves nothing behind (#325, #332).
-            discardFailedLaunch(id, { sessionDir: childSessionDir, workspaceDir: ownedCloneWorkspace, scratch: taskRuntime?.policy.scratch });
+            // A launch that never committed metadata is not a run: drop
+            // everything the attempt created so the registry keeps no
+            // unreadable record (#325, #332, #623). A continuation's session
+            // directory belongs to the retained owner and a caller-chosen
+            // `sandbox_dir` is never ours, so `discardFailedLaunch` only
+            // removes this attempt's own paths. A child that already started
+            // must not keep running unsupervised; its log goes with the
+            // attempt, because a record without metadata can never be read.
+            if (!committed) {
+                lease?.release();
+                if (spawned) killProcessTree(spawned.pid, "SIGKILL");
+                discardFailedLaunch(id, { sessionDir: childSessionDir, workspaceDir: ownedCloneWorkspace, scratch: launchScratch });
+            }
             throw error;
         }
-        // Record process identity (pgid, start-time token) so health
-        // reconciliation can tell a supervised child from a recycled pid
-        // or an orphaned process group (#63). Best-effort: when the OS
-        // probes are unavailable the fields stay absent and the run is
-        // reconciled via the conservative old-metadata path.
-        const identity = captureProcessIdentity(spawned.pid, spawnIdentityProbe);
-        const startedAt = Date.now();
-
-        const meta: RunMeta = {
-            id, name: p.name, status: "running",
-            pid: spawned.pid, spawnPid: process.pid, spawnPidStartTime: parentStartToken(), model,
-            effort: thinking, cwd,
-            ...identity,
-            promptPreview: p.prompt.slice(0, 200),
-            startedAt, logPath: logPathFor(id), sessionId: id,
-            callbackOrigin,
-            sandbox: sandboxDir, taskRuntime: Boolean(taskRuntime), taskScratch: taskRuntime?.policy.scratch, callback: p.callback !== false,
-            ...batchInfo,
-            // The launch record is JSON. Registry freezes that value; it does not
-            // require the resolver's nominal type to carry an index signature.
-            ...(p.catalog ? { catalog: p.catalog as unknown as RunMeta["catalog"] } : {}),
-            timing: resolveRunTiming({ params: p, settings: cfg, env: process.env, startedAt }),
-        };
-        writeMeta(meta);
-
-        void spawned.exit.then((code) => finalizeRun(pi, ctx, id, code));
-
-        uiCtx = ctx;
-        ensureTicker();
-        // Start periodic supervision reconciliation (self-stops when idle).
-        ensureHealthTicker();
-        // Footer hint: a visible run now exists, so `← background work · N` shows.
-        updateNavigatorFooter(ctx);
-
-        const toolSummary = taskTools ? describeTaskTools(taskTools) : undefined;
-        const runtime = resolution.mode === "inherit"
-            ? `Runtime: ALL installed extensions (inheritExtensions) — mid-turn drain risk\n`
-            : toolSummary
-                ? `Runtime: isolated · ${toolSummary}${resolution.specs.length ? ` · extensions ${resolution.specs.join(", ")}` : ""}\n`
-                : resolution.specs.length
-                ? `Runtime: isolated · extensions ${resolution.specs.join(", ")}\n`
-                : `Runtime: isolated · built-in tools only\n`;
-        const warn = (unavailable.length ? `Task sandbox: ${unavailable.map((tool) => `${tool.name} disabled (${tool.reason})`).join("; ")}.\n` : "") +
-            (!sandboxEnabled && resolution.unmapped.length
-            ? `NOTE: no extension mapped for ${resolution.unmapped.join(", ")} — ` +
-              `${resolution.unmapped.length > 1 ? "these tools" : "this tool"} will NOT exist in the child. ` +
-              `Add a toolExtensions entry in config.json.\n`
-            : "");
-        const modelNote = catalogDefaultNote(p.catalog, model, thinking);
-        return { id, meta, spawned, runtime: runtime + (meta.timing ? `${formatTimingLimits(meta.timing, startedAt)}\n` : ""), warn, sandboxDir, modelNote };
     }
 
     // ---- subagent_spawn -------------------------------------------------
+    //
+    // One tool launches both fresh work and a continuation of saved work. A
+    // continuation is an ORDINARY attempt of the SAME saved conversation: a new
+    // run id, the prior native session id, the exact saved session file, and the
+    // frozen launch recipe. Old logs/results/callbacks/timing stay under their
+    // own attempt id. Nothing stays alive between attempts, so a parked
+    // conversation occupies zero capacity slots. `session_id` (not the run id)
+    // selects the conversation, and the latest attempt is always the one that
+    // owns it.
     const acceptanceSpawnTool = {
         name: "subagent_spawn",
         label: "Spawn Subagent",
@@ -1923,12 +2541,17 @@ export default function (pi: ExtensionAPI) {
             ...SUBAGENT_ORCHESTRATION_GUIDELINES,
             "The tools param is both the tool allowlist AND what determines which extensions load in the child (e.g. tools='read,bash,web_fetch' loads only the web-tools package). Ask for the tools the task needs and nothing more; clean:true gives a built-ins-only child. Without an agent or role, pick a model with the model param (e.g. 'xai/grok-4.5@high'); providerless model patterns are resolved by Pi, while provider/model is deterministic and loads mapped provider extensions.",
             ...CATALOG_GUIDELINES,
-            "By default the subagent is sandboxed. Human settings in /sandbox control file, credential-file, command, and network permissions; sandbox:false cannot override an enabled human profile. Without published settings, legacy write confinement applies. Set callback:false to finish quietly — then read the result on demand via subagent_result.",
-            "Every run has harness-owned stall detection: no progress for stuck_minutes (default 10) wakes you once without stopping the run. Elapsed-time limits are opt-in: deadline_minutes steers the child to wrap up and later stops it after grace_minutes, while max_minutes stops it without grace. Do not set elapsed-time limits merely because a task may take a while; use them only when the work needs a real wall-clock bound.",
+            "Subagent sandboxing defaults to off. Human settings in /sandbox control file, credential-file, command, and network permissions; sandbox:false cannot override an enabled human profile. Set sandbox:true to request kernel confinement, including without published settings. Set callback:false to finish quietly — then read the result on demand via subagent_result.",
+            "Every launch automatically joins one shared harness-owned watcher, including batch launches; it stops when the last active run ends. Do not start a separate heartbeat or background watcher for subagents. No progress for stuck_minutes (default 10) wakes you once without stopping the run. Elapsed-time limits are opt-in: deadline_minutes steers the child to wrap up and later stops it after grace_minutes, while max_minutes stops it without grace. Do not set elapsed-time limits merely because a task may take a while; use them only when the work needs a real wall-clock bound.",
             "Use git_clone_workspace:true when the subagent will mutate Git in a sandbox. The parent prepares a disposable, self-contained clone with a real .git/ directory inside the sandbox root, so linked-worktree metadata outside the sandbox cannot stall the child.",
+            "Saved conversations persist automatically. To continue a completed or stopped worker in its own history, call subagent_spawn with session_id (the native session id reported for the saved conversation) and the new feedback as prompt. Omit session_id for a brand-new conversation.",
+            "On a continuation, pass prompt, session_id, and only optional model, thinking, callback, or timing overrides. Launch-only options (name, agent, role, alias, tools, exclude_tools, clean, sandbox, sandbox_dir, cwd, git_clone_workspace, approve, allow_nested) keep the saved recipe; repeat them only with the same value, otherwise the launch is refused.",
+            "Do not restate the original task or role when continuing: they already live in the saved conversation. A running or orphaned latest attempt blocks continuation until it stops, and missing saved history is refused rather than recreated.",
         ],
         parameters: Type.Object({
-            prompt: Type.String({ description: "The task for the subagent. This is the only context it gets — be self-contained." }),
+            prompt: Type.String({ description: "The task for the subagent. This is the only context it gets — be self-contained. On a continuation this is the next user turn; the original task and role stay in saved history." }),
+            session_name: Type.Optional(Type.String({ description: "Exact name of one saved conversation in the current folder and descendants. Alternative to session_id. Duplicate names report matching session ids instead of choosing a conversation." })),
+            session_id: Type.Optional(Type.String({ description: "Native session id of a saved conversation to continue (reported for every launch and attempt). Omit to start a new conversation. A continuation gets a new run id but keeps this session id, history, workspace, and frozen launch recipe." })),
             name: Type.Optional(Type.String({ description: "Short label for the run (e.g. 'reviewer'). Ignored when agent or role is set, except as the direct-role alias when alias is omitted." })),
             agent: Type.Optional(Type.String({ description: "Named agent id (agent.<slug>). Mutually exclusive with role. The navigator shows the defined agent name." })),
             role: catalogRoleSchema("direct role launch"),
@@ -1938,7 +2561,7 @@ export default function (pi: ExtensionAPI) {
             tools: Type.Optional(Type.String({ description: "Tool allowlist: comma-separated names the child may use (e.g. 'read,bash,web_fetch'). This ALSO selects which extensions load — only packages backing a requested tool are loaded. Defaults to the configured safe set." })),
             exclude_tools: Type.Optional(Type.String({ description: "Comma-separated tool denylist, applied on top of the allowlist." })),
             clean: Type.Optional(Type.Boolean({ description: "Run a hermetic child with NO extensions at all (only built-ins: read, bash, edit, write). Default false — the extensions backing the requested tools load, so web_fetch and model auth (e.g. xai) work." })),
-            sandbox: Type.Optional(Type.Boolean({ description: "Use the human Subagents profile from /sandbox. An enabled human profile cannot be bypassed with false. Without published settings, defaults to kernel write confinement; false opts out of that legacy default." })),
+            sandbox: Type.Optional(Type.Boolean({ description: "Use the human Subagents profile from /sandbox. Defaults to off without published settings. True requests kernel confinement; false cannot bypass an enabled human profile." })),
             sandbox_dir: Type.Optional(Type.String({ description: "Confine writes to (and run the child in) this directory instead of the working dir. Created if missing." })),
             callback: Type.Optional(Type.Boolean({ description: "Default TRUE: on completion, trigger a turn that calls subagent_result and presents the result. Set false to finish quietly — the result is then read on demand via subagent_result." })),
             cwd: Type.Optional(Type.String({ description: "Working directory (default: current)." })),
@@ -1948,16 +2571,22 @@ export default function (pi: ExtensionAPI) {
             ...timingSchemaFields(),
         }),
 
-        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-            const p = params as SpawnParams;
+        async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<{
+            content: { type: "text"; text: string }[];
+            details: Record<string, unknown>;
+        }> {
+            const p = { ...params } as SpawnParams;
+            p.session_id = requestedSessionId(p, ctx.cwd);
             if (p.prompt.trim() === "") throw new Error("prompt is empty.");
+            if (p.session_id !== undefined && (typeof p.session_id !== "string" || p.session_id.trim() === "")) {
+                throw new Error("session_id must be a non-empty native session id.");
+            }
+            assertNoRetiredLaunchOptions(p as { retain_session?: unknown });
             // A present-but-blank role or agent is a mistake, not a request for a catalog-free child.
             const blankSelector = blankCatalogSelector(p);
             if (blankSelector) throw new Error(blankSelector);
 
             const maxConcurrent = activeConcurrencyCap();
-            const countRunning = () =>
-                listActiveMetasForParent(process.pid).filter((m) => effectiveStatus(m) === "running").length;
             // Shared with batch-spawn: reserve before any async work so an interleaved
             // batch cannot oversubscribe after this check and before writeMeta.
             const gate = getSharedCapacityGate(countRunning);
@@ -1967,11 +2596,55 @@ export default function (pi: ExtensionAPI) {
 
             let reserved = 1;
             try {
+                if (p.session_id !== undefined) {
+                    // Continue a saved conversation. The same capacity, permission,
+                    // lease, callback, and finalization path runs as for a fresh
+                    // launch; only the conversation and recipe are inherited. The
+                    // catalog is never re-resolved for a saved conversation.
+                    const plan = continuationPlanFor(p.session_id, verifiedOriginFromContext(ctx) ?? activeCallbackOrigin);
+                    assertContinuationLaunchOptions(p as unknown as Record<string, unknown>, plan.recipe, "");
+                    const continuation: SpawnParams = {
+                        prompt: p.prompt,
+                        model: p.model,
+                        thinking: p.thinking,
+                        callback: p.callback,
+                        deadline_minutes: p.deadline_minutes,
+                        grace_minutes: p.grace_minutes,
+                        max_minutes: p.max_minutes,
+                        stuck_minutes: p.stuck_minutes,
+                    };
+                    const { id, spawned, runtime, warn, sandboxDir, modelNote } = await spawnSubagentRun(
+                        ctx, continuation, undefined, plan,
+                    );
+                    gate.commit(1);
+                    reserved = 0;
+                    return {
+                        content: [{ type: "text" as const, text:
+                            `Subagent continued: ${plan.recipe.name ? `${plan.recipe.name} ` : ""}id=${id} (pid ${spawned.pid}) from ${plan.prior.id}${plan.prior.status === "killed" ? " (interrupted attempt)" : ""}.\n` +
+                            `Conversation: session ${plan.conversation.sessionId} — pass session_id=${plan.conversation.sessionId} for the next follow-up.\n` +
+                            (modelNote ? `${modelNote[0]!.toUpperCase()}${modelNote.slice(1)}.\n` : "") +
+                            (continuation.callback === false
+                                ? `Running in the background; the foreground is free. It will finish quietly — read the result with subagent_result id=${id}.\n`
+                                : `Running in the background; the foreground is free. Its result will be posted back here when it finishes.\n`) +
+                            (sandboxDir ? `Sandboxed: project root ${sandboxDir}; current launch permissions apply.\n` : "") +
+                            runtime + warn +
+                            `Log: ${logPathFor(id)}`,
+                        }],
+                        details: {
+                            status: "continued" as const,
+                            launched: true,
+                            priorId: plan.prior.id,
+                            runId: id,
+                            sessionId: plan.conversation.sessionId,
+                            rootRunId: plan.rootRunId,
+                        },
+                    };
+                }
                 const catalog = await admitCatalog(ctx, [p]);
                 if (catalog.status === "clarification-needed") {
                     gate.release(1);
                     reserved = 0;
-                    return catalogResult(catalog) as ReturnType<typeof text>;
+                    return catalogResult(catalog);
                 }
                 if (catalog.jobs.length > 1) {
                     const extra = catalog.jobs.length - 1;
@@ -1988,22 +2661,29 @@ export default function (pi: ExtensionAPI) {
                         reserved -= 1;
                         launched.push({ name: job.name, id, modelNote });
                     }
-                    return text(launched.map((item) => `Subagent launched: ${item.name ? `${item.name} ` : ""}id=${item.id}.${item.modelNote ? ` ${item.modelNote}.` : ""}`).join("\n"));
+                    return {
+                        content: [{ type: "text" as const, text: launched.map((item) => `Subagent launched: ${item.name ? `${item.name} ` : ""}id=${item.id} (session ${item.id}).${item.modelNote ? ` ${item.modelNote}.` : ""}`).join("\n") }],
+                        details: { status: "launched" as const, launched: true, runIds: launched.map((item) => item.id) },
+                    };
                 }
                 Object.assign(p, catalog.jobs[0]);
-                const { id, spawned, runtime, warn, sandboxDir, modelNote } = await spawnSubagentRun(ctx, p);
+                const { id, meta, spawned, runtime, warn, sandboxDir, modelNote } = await spawnSubagentRun(ctx, p);
                 gate.commit(1);
                 reserved = 0;
-                return text(
-                    `Subagent launched: ${p.name ? `${p.name} ` : ""}id=${id} (pid ${spawned.pid}).\n` +
-                    (modelNote ? `${modelNote[0]!.toUpperCase()}${modelNote.slice(1)}.\n` : "") +
-                    (p.callback === false
-                        ? `Running in the background; the foreground is free. It will finish quietly — read the result with subagent_result id=${id}.\n`
-                        : `Running in the background; the foreground is free. Its result will be posted back here when it finishes.\n`) +
-                    (sandboxDir ? `Sandboxed: project root ${sandboxDir}; launch permissions apply.\n` : "") +
-                    runtime + warn +
-                    `Log: ${logPathFor(id)}`,
-                );
+                return {
+                    content: [{ type: "text" as const, text:
+                        `Subagent launched: ${p.name ? `${p.name} ` : ""}id=${id} (pid ${spawned.pid}).\n` +
+                        `Session: ${meta.sessionId} — pass it as session_id to continue this conversation.\n` +
+                        (modelNote ? `${modelNote[0]!.toUpperCase()}${modelNote.slice(1)}.\n` : "") +
+                        (p.callback === false
+                            ? `Running in the background; the foreground is free. It will finish quietly — read the result with subagent_result id=${id}.\n`
+                            : `Running in the background; the foreground is free. Its result will be posted back here when it finishes.\n`) +
+                        (sandboxDir ? `Sandboxed: project root ${sandboxDir}; launch permissions apply.\n` : "") +
+                        runtime + warn +
+                        `Log: ${logPathFor(id)}`,
+                    }],
+                    details: { status: "launched" as const, launched: true, runId: id, sessionId: meta.sessionId },
+                };
             } catch (err) {
                 if (reserved === 1) gate.release(1);
                 else if (reserved > 0) gate.release(reserved);
@@ -2012,10 +2692,10 @@ export default function (pi: ExtensionAPI) {
         },
     };
     acceptanceSpawnToolRef = acceptanceSpawnTool;
-    pi.registerTool(acceptanceSpawnTool);
+    registerSpawnTool(acceptanceSpawnTool);
 
     // ---- subagent_spawn_batch -------------------------------------------
-    pi.registerTool({
+    registerSpawnTool({
         name: "subagent_spawn_batch",
         label: "Spawn Subagent Batch",
         description:
@@ -2048,7 +2728,7 @@ export default function (pi: ExtensionAPI) {
                 thinking: Type.Optional(Type.String({ description: "Reasoning effort applied to every job: off, minimal, low, medium, high, xhigh, or max." })),
                 tools: Type.Optional(Type.String({ description: "Tool allowlist applied to every job." })),
                 exclude_tools: Type.Optional(Type.String({ description: "Comma-separated tool denylist applied to every job." })),
-                sandbox: Type.Optional(Type.Boolean({ description: "Use the human Subagents profile; false cannot override an enabled profile. Legacy default is write confinement." })),
+                sandbox: Type.Optional(Type.Boolean({ description: "Use the human Subagents profile; false cannot override an enabled profile. Defaults to off without published settings; true requests kernel confinement." })),
                 sandbox_dir: Type.Optional(Type.String({ description: "Writable root for every job." })),
                 callback: Type.Optional(Type.Boolean({ description: "Default TRUE: post result back on completion." })),
                 clean: Type.Optional(Type.Boolean({ description: "Hermetic builtins-only child; no extensions load." })),
@@ -2057,9 +2737,11 @@ export default function (pi: ExtensionAPI) {
                 approve: Type.Optional(Type.Boolean({ description: "Trust project-local files in children." })),
                 allow_nested: Type.Optional(Type.Boolean({ description: "Allow children to spawn their own subagents." })),
                 ...timingSchemaFields(),
-            }, { description: "Options applied to every job; per-job values override these." })),
+            }, { description: "Options applied to every job; per-job values override these. session_id is per job and is never inherited from shared, because one shared conversation would make every job compete for the same writer." })),
             jobs: Type.Array(Type.Object({
-                prompt: Type.String({ description: "The task for this job." }),
+                prompt: Type.String({ description: "The task for this job. On a continuation this is the next user turn." }),
+                session_name: Type.Optional(Type.String({ description: "Exact saved conversation name in the current folder and descendants. Per job only; alternative to session_id. Ambiguous names refuse with matching session ids." })),
+                session_id: Type.Optional(Type.String({ description: "Native session id of a saved conversation this JOB continues. Per job only, never shared. Omit for a new conversation. A continuation keeps its saved history, workspace, and frozen recipe, and accepts only model/thinking/callback/timing overrides." })),
                 name: Type.Optional(Type.String({ description: "Short label for this job. Direct-role alias when alias is omitted." })),
                 agent: Type.Optional(Type.String({ description: "Named agent id for this job. Overrides shared agent and role." })),
                 role: catalogRoleSchema("batch job"),
@@ -2093,12 +2775,19 @@ export default function (pi: ExtensionAPI) {
             };
 
             const cfg = loadConfig();
-            const countRunning = () =>
-                listActiveMetasForParent(process.pid).filter((m) => effectiveStatus(m) === "running").length;
             const launchAvailable = p.onCapacity === "launch-available";
             // Shared with single-spawn. Reservations count against maxConcurrent so a
             // concurrent single spawn cannot take a slot the batch already admitted.
             const gate = getSharedCapacityGate(countRunning);
+
+            // session_id selects one saved conversation, so it is per job: a shared
+            // value would point every job at the same conversation writer.
+            if (p.shared?.session_name !== undefined) throw new Error("session_name is per job, never shared.");
+            if (p.shared?.session_id !== undefined) {
+                throw new Error("session_id is per job: set jobs[i].session_id for the jobs that continue a saved conversation; shared has no session_id.");
+            }
+            assertNoRetiredLaunchOptions(p.shared, "shared: ");
+            p.jobs.forEach((job, index) => assertNoRetiredLaunchOptions(job, `jobs[${index}]: `));
 
             validateBatchPlan({ shared: p.shared, jobs: p.jobs, onCapacity: p.onCapacity, config: cfg });
             // A present-but-blank role or agent rejects the whole batch before any launch.
@@ -2108,7 +2797,9 @@ export default function (pi: ExtensionAPI) {
 
             let catalogSnapshot: CatalogSnapshot | undefined;
             let catalogHost: CatalogHost | undefined;
-            if (hasCatalogSelector(p.shared) || p.jobs.some((job) => hasCatalogSelector(job))) {
+            const needsCatalog = p.jobs.some((job) => job.session_id === undefined && job.session_name === undefined
+                && hasCatalogSelector(mergeJobOptions(p.shared, job)));
+            if (needsCatalog) {
                 catalogHost = catalogHostFrom(ctx);
                 noteCatalogHost(catalogHost);
                 catalogSnapshot = loadLaunchSnapshot(catalogHost);
@@ -2157,7 +2848,7 @@ export default function (pi: ExtensionAPI) {
 
             const names = assignBatchJobNames(p.jobs);
             const batchId = nextBatchId();
-            const launched: { job: number; name: string; id: string; modelNote?: string }[] = [];
+            const launched: { job: number; name: string; id: string; sessionId: string; continuedFrom?: string; modelNote?: string }[] = [];
             const failed: { job: number; name: string; reason: string }[] = [];
             const skipped: { job: number; name: string }[] = [];
             // How many reject-mode reserved slots are still held (not yet committed/released).
@@ -2169,6 +2860,13 @@ export default function (pi: ExtensionAPI) {
                 const job = p.jobs[i];
                 let name = names[i];
                 const merged = mergeJobOptions(p.shared, job);
+                const isContinuation = job.session_id !== undefined || job.session_name !== undefined;
+                // A continuation keeps its own frozen model and effort. shared.model
+                // is a default for NEW conversations, so only a per-job value is an
+                // explicit escalation of the saved recipe.
+                const launch: Partial<SpawnParams> & { prompt: string; name: string } = !isContinuation
+                    ? { ...merged, name }
+                    : { ...merged, name, model: job.model, thinking: job.thinking };
 
                 if (launchAvailable) {
                     if (!gate.tryReserve(1, activeConcurrencyCap())) {
@@ -2180,7 +2878,9 @@ export default function (pi: ExtensionAPI) {
                 }
 
                 try {
-                    if (catalogSnapshot && catalogHost && hasCatalogSelector(merged)) {
+                    const sessionId = requestedSessionId(job, ctx.cwd);
+                    // A saved conversation is never re-resolved against the catalog.
+                    if (sessionId === undefined && catalogSnapshot && catalogHost && hasCatalogSelector(merged)) {
                         const explicitName = typeof job.name === "string" && job.name.trim() !== "" ? job.name : undefined;
                         const prepared = await prepareCatalogJob(catalogSnapshot, {
                             ...merged,
@@ -2189,16 +2889,27 @@ export default function (pi: ExtensionAPI) {
                         }, catalogHost);
                         if (prepared.status === "blocked") throw new Error(prepared.message);
                         if (prepared.status === "ready") {
-                            Object.assign(merged, prepared.assign);
-                            if (prepared.assign.model === undefined) delete merged.model;
-                            if (prepared.assign.thinking === undefined) delete merged.thinking;
+                            Object.assign(launch, prepared.assign);
+                            if (prepared.assign.model === undefined) delete launch.model;
+                            if (prepared.assign.thinking === undefined) delete launch.thinking;
                             name = prepared.assign.name;
                         }
                     }
-                    const { id, modelNote } = await spawnSubagentRun(ctx, { ...merged, name }, { batchId, batchName: p.batchName });
+                    let plan: ContinuationPlan | undefined;
+                    if (sessionId !== undefined) {
+                        plan = continuationPlanFor(sessionId, verifiedOriginFromContext(ctx) ?? activeCallbackOrigin);
+                        assertContinuationLaunchOptions(
+                            launch as unknown as Record<string, unknown>, plan.recipe, `Job ${i + 1}: `, { includeName: false },
+                        );
+                    }
+                    const { id, meta, modelNote } = await spawnSubagentRun(ctx, { ...launch, name }, { batchId, batchName: p.batchName }, plan);
                     gate.commit(1);
                     if (!launchAvailable) reservedRemaining -= 1;
-                    launched.push({ job: i + 1, name, id, ...(modelNote ? { modelNote } : {}) });
+                    launched.push({
+                        job: i + 1, name, id, sessionId: meta.sessionId,
+                        ...(plan ? { continuedFrom: plan.prior.id } : {}),
+                        ...(modelNote ? { modelNote } : {}),
+                    });
                 } catch (err) {
                     gate.release(1);
                     if (!launchAvailable) reservedRemaining -= 1;
@@ -2248,11 +2959,18 @@ export default function (pi: ExtensionAPI) {
         getActiveOrigin: (ctx?: unknown) => activeCallbackOrigin ?? verifiedOriginFromContext(ctx as ExtensionContext | undefined),
     };
     pi.registerTool(subagentListTool(Type, toolSession));
+    pi.registerTool(subagentSettingsTool(Type, effectiveSettings));
     pi.registerTool(subagentOutputTool(Type, toolSession));
     const acceptanceResultTool = subagentResultTool(Type, toolSession);
     pi.registerTool(acceptanceResultTool);
     publishAcceptanceHooks(acceptanceResultTool);
-    const acceptanceStopTool = subagentStopTool(Type, { onStopped: renderWidget });
+    const acceptanceStopTool = subagentStopTool(Type, { onStopped: (id) => {
+        renderWidget();
+        syncHealthTicker();
+        // Stopping a run is a terminal transition, so it owes the caller its one
+        // completion callback even when the caller is the one who asked (#624).
+        enqueueCompletionCallback(pi, id);
+    } });
     acceptanceStopToolRef = acceptanceStopTool;
     pi.registerTool(acceptanceStopTool);
     publishAcceptanceHooks();
@@ -2283,20 +3001,26 @@ export default function (pi: ExtensionAPI) {
                 sessionSettings: agentSessionSettings.snapshot(),
             };
         },
-        enrich: createLaunchEnricher(),
+        enrich: createLaunchEnricher(pi),
     });
     const openSettings = async (ctx: ExtensionCommandContext): Promise<void> => {
         if (ctx.mode === "tui" && ctx.hasUI && typeof ctx.ui.custom === "function") {
-            await ctx.ui.custom<void>((tui, theme, _kb, done) => createSubagentSettingsPage(theme, {
-                get: () => ({
-                    mode: activeDelegationMode(), maxConcurrent: activeConcurrencyCap(),
-                    modeSource: delegationOverride ? "session" : "config",
-                    capSource: capOverride !== undefined ? "session" : "config",
-                    defaultMode: normalizeDelegationMode(loadConfig().delegationMode),
-                    defaultCap: normalizeConcurrencyCap(loadConfig().maxConcurrent),
-                }),
+            const next = await ctx.ui.custom<"agents" | undefined>((tui, theme, _kb, done) => createSubagentSettingsPage(theme, {
+                get: () => {
+                    const settings = effectiveSettings();
+                    return {
+                        mode: settings.delegationMode, maxConcurrent: settings.maxConcurrent,
+                        modeSource: settings.sources.delegationMode,
+                        capSource: settings.sources.maxConcurrent,
+                        defaultMode: normalizeDelegationMode(loadConfig().delegationMode),
+                        defaultCap: normalizeConcurrencyCap(loadConfig().maxConcurrent),
+                    };
+                },
                 changeMode, changeCap, save: saveSettings, reset: resetSettings,
-            }, () => { refreshBackgroundWorkNavigator(ctx); tui.requestRender(); }, () => done()));
+                // Close this page first; the catalog opens after ui.custom resolves.
+                openAgents: () => done("agents"),
+            }, () => { refreshBackgroundWorkNavigator(ctx); tui.requestRender(); }, () => done(undefined)));
+            if (next === "agents") await agentOperations.openCatalog(ctx);
         } else {
             ctx.ui.notify(`Delegation mode: ${activeDelegationMode()}. Concurrent subagents: ${activeConcurrencyCap()}. Use /subagents mode <mode> or /subagents cap <number>; /subagents save persists both.`, "info");
         }
@@ -2354,8 +3078,17 @@ export default function (pi: ExtensionAPI) {
     pi.registerTool(discoveryTool as Parameters<ExtensionAPI["registerTool"]>[0]);
 
     pi.on("before_agent_start", (event) => ({
-        systemPrompt: `${appendExecutionPolicy(event.systemPrompt)}\n\n${delegationPrompt(activeDelegationMode())}`,
+        systemPrompt: `${appendExecutionPolicy(event.systemPrompt)}\n\nUse the latest Subagent settings context block as the authoritative delegation mode and capacity snapshot. Its delegation guidance replaces earlier mode-specific guidance, including guidance in a plan. Inspect subagent_settings when needed; never treat the concurrency limit as a target number of agents.`,
     }));
+
+    pi.on("context", (event) => {
+        const settings = effectiveSettings();
+        return { messages: [
+            ...event.messages.filter(message => message.role !== "custom" || message.customType !== SUBAGENT_SETTINGS_CONTEXT),
+            { role: "custom" as const, customType: SUBAGENT_SETTINGS_CONTEXT,
+                content: formatSubagentSettings(settings), display: false, details: settings, timestamp: Date.now() },
+        ] };
+    });
 
     // ---- live-status lifecycle -----------------------------------------
     pi.on("agent_start", async (_event, ctx) => {
@@ -2415,6 +3148,10 @@ export default function (pi: ExtensionAPI) {
     // alive, resume the ticking widget. Deferred out of the factory per pi's
     // "no background resources at load" rule.
     pi.on("session_start", async (_event, ctx) => {
+        // A session begins in this process again (reload, restart, or a session
+        // switch), so the previous session's teardown no longer applies: the
+        // replacing session owns this instance's supervision loops (#625).
+        sessionTornDown = false;
         setCallbackBatchContext(pi, ctx);
         agentSessionSettings.restore(ctx);
         restoreDelegationMode(ctx);
@@ -2429,30 +3166,30 @@ export default function (pi: ExtensionAPI) {
         // - Drop any leftover overlay timers/confirm state from a prior session
         //   (defensive if the host skipped session_shutdown before re-start).
         // - Reinstall the editor wrapper without stacking (marked factory).
-        // - Clear + republish footer statuses (pi clears extension statuses on
-        //   session switch/reload; dirty-check only dedupes within a session).
         // - Repaint the widget even if its last in-memory lines match; the host
         //   may have dropped extension UI during reload/session replacement.
         ensureSubagentProvider();
+        // A reload/restart leaves detached children alive without an in-memory
+        // exit observer (#625). Finalize any that finished while the foreground
+        // session was gone; live ones stay `running` and the ticker below
+        // supervises them until they exit. This runs BEFORE abandonment
+        // adoption: a finished child's coherent log is terminal evidence, and
+        // `lost` would otherwise win the race and hide the result.
+        recoverInterruptedSubagents(pi);
         // Adopt records left non-terminal by a pi that died without a clean
         // shutdown, so the age sweep can eventually retire them.
         reconcileAbandonedRuns();
         disposeBackgroundWorkNavigator(ctx);
         widgetNavActive = false;
         widgetNavSelectedId = undefined;
-        if (isNavigatorUiAvailable(ctx)) {
-            try { ctx.ui.setStatus(CLOSE_CONFIRM_STATUS_KEY, undefined); } catch { /* ignore */ }
-        }
         ensureNavigator(ctx);
         publishAcceptanceHooks();
         updateNavigatorFooter(ctx);
         // Clear the retired legacy widget so the shared navigator is the only
         // list surface for running/orphaned subagents.
         renderWidget();
-        // Resume supervision reconciliation + durable health-callback recovery
-        // across /reload while current-parent work still needs the ticker
-        // (running/orphaned, or unmarked lost); it stops itself when idle.
-        if (needsMonitoring(listMetasForParent(process.pid)) || hasPendingFailureCallbacks()) ensureHealthTicker();
+        // Reattach one watcher after reload; ordinary completion retries belong to the batcher.
+        syncHealthTicker();
     });
 
     pi.on("session_before_switch", () => {
@@ -2466,15 +3203,34 @@ export default function (pi: ExtensionAPI) {
     });
 
     // Tear down the timer and clear the widget when the session ends.
-    pi.on("session_shutdown", async (_event, ctx) => {
+    pi.on("session_shutdown", async (event, ctx) => {
         if (typeof unsubscribeSettingsRequest === "function") unsubscribeSettingsRequest();
-        // The foreground Pi session owns this work. Stop current-session
-        // running/orphaned children before dropping the session origin, so they
-        // cannot become live process groups with no coordinator.
-        stopCurrentSessionSubagents(ctx);
+        // #625: subagent children are detached process groups that outlive this
+        // foreground session. A controlled reload or quit must not destroy
+        // delegated work: record the interruption durably, warn the human, and
+        // leave the child, its log, and its saved state untouched. The next
+        // session of this pi process resumes supervision and finalizes the run
+        // from the child's own log.
+        const reason = typeof event?.reason === "string" ? event.reason : "shutdown";
+        try {
+            const interrupted = interruptCurrentSessionSubagents(reason, ctx);
+            warnInterruptedSubagents(ctx, interrupted, reason);
+        } catch { /* shutdown cleanup must never block the session teardown */ }
+        // Late finalizers of surviving children must not restart supervision
+        // loops in this replaced instance.
+        sessionTornDown = true;
+        // Children keep running; their finalizers (if this instance still holds
+        // one) must not reach for a ctx that Pi invalidates once the session is
+        // replaced.
+        uiCtx = undefined;
         agentSessionSettings.clear();
         catalogModelRegistry = undefined;
-        activeCallbackOrigin = undefined;
+        // `/reload` keeps the same session identity, so a finalizer that lands
+        // after the replacement still targets the live session and may deliver
+        // its completion. Every other reason replaces or ends that identity, so
+        // the origin is dropped and the pending marker is left for whichever
+        // session owns the run next.
+        if (reason !== "reload") activeCallbackOrigin = undefined;
         if (typeof unsubscribeDelegationRequest === "function") unsubscribeDelegationRequest();
         cancelCallbackBatch(pi);
         mainAgentStartedAt = undefined;
@@ -2490,14 +3246,7 @@ export default function (pi: ExtensionAPI) {
         // Always dispose navigator detail timers (no UI call — just clearInterval).
         // Safe in every mode; the dispose hook is only set when a TUI overlay opened.
         disposeBackgroundWorkNavigator(ctx);
-        // Widget clear is intentional in every mode that exposes ui (incl. RPC
-        // — pi docs: setWidget works in both TUI and RPC). Navigator cleanup
-        // is TUI-only: the footer hint is never published outside TUI, so
-        // clearing it in RPC would be a pure UI leak (setStatus subagents-nav).
+        // Widget clear is intentional in every mode that exposes ui, including RPC.
         try { ctx.ui.setWidget("subagents", WIDGET_CLEAR); } catch { /* ignore */ }
-        if (isNavigatorUiAvailable(ctx)) {
-            try { ctx.ui.setStatus(NAVIGATOR_STATUS_KEY, undefined); } catch { /* ignore */ }
-            try { ctx.ui.setStatus(CLOSE_CONFIRM_STATUS_KEY, undefined); } catch { /* ignore */ }
-        }
     });
 }

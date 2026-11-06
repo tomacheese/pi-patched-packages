@@ -11,6 +11,7 @@ import { isAbsolute, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { presentCatalog, presentCatalogEntry, type LaunchEnricher, type OperationView } from "./agent-inspection.ts";
 import { createCatalogComponent } from "./catalog-ui.ts";
+import type { ScopedModelLike } from "./catalog-editor.ts";
 import {
     CATALOG_SCHEMA_VERSION,
     DiagnosticCodes,
@@ -30,6 +31,8 @@ import {
     loadCatalog,
     projectCatalogPaths,
     refreshCatalog,
+    resetRuntimeToBundled,
+    resetUserDefinition,
     saveDefinition,
     userCatalogPaths,
     type CatalogSnapshot,
@@ -87,7 +90,7 @@ export interface AgentCommandUi {
     editor(title: string, prefill?: string): Promise<string | undefined>;
     notify(message: string, type?: "info" | "warning" | "error"): void;
     setWidget?(key: string, content: string[] | undefined): void;
-    custom?<T>(factory: (tui: { requestRender(): void }, theme: { fg(color: string, text: string): string }, keybindings: unknown, done: (value: T) => void) => unknown, options?: { overlay: boolean }): Promise<T>;
+    custom?<T>(factory: (tui: { requestRender(): void }, theme: { fg(color: string, text: string): string }, keybindings: unknown, done: (value: T) => void) => unknown, options?: { overlay: boolean; overlayOptions?: import("@earendil-works/pi-tui").OverlayOptions }): Promise<T>;
 }
 
 export interface AgentCommandHost {
@@ -95,6 +98,11 @@ export interface AgentCommandHost {
     hasUI: boolean;
     mode?: "tui" | "rpc" | "json" | "print";
     isProjectTrusted(): boolean;
+    /**
+     * Session model scope from `ctx.scopedModels`. Empty or absent means no
+     * scope, which Pi treats as "all available models are usable".
+     */
+    scopedModels?: readonly ScopedModelLike[];
     ui: AgentCommandUi;
 }
 
@@ -150,8 +158,18 @@ export function executeAgentsCommandContext(args: string, ctx: ExtensionCommandC
         hasUI: ctx.hasUI,
         mode: ctx.mode,
         isProjectTrusted: () => ctx.isProjectTrusted(),
+        scopedModels: scopedModelsFromContext(ctx),
         ui: ctx.ui,
     }, deps);
+}
+
+/**
+ * Older Pi versions do not expose `ctx.scopedModels`, so they retain the
+ * unscoped picker. Current hosts use an empty array when no scope is configured.
+ */
+function scopedModelsFromContext(ctx: ExtensionCommandContext): readonly ScopedModelLike[] {
+    const scoped = (ctx as unknown as { scopedModels?: unknown }).scopedModels;
+    return Array.isArray(scoped) ? scoped as readonly ScopedModelLike[] : [];
 }
 
 export async function executeAgentsCommand(args: string, host: AgentCommandHost, deps: AgentCommandDeps = {}): Promise<AgentCommandResult> {
@@ -724,10 +742,12 @@ async function finishInspection(host: AgentCommandHost, commandResult: AgentComm
         const entries = catalog ?? { entries: [view!], diagnostics: commandResult.diagnostics, revision: "", text: "" };
         try {
             host.ui.setWidget?.("agents-catalog", undefined);
+            let viewportHeight = 30;
             await host.ui.custom<void>((tui, theme, _keys, done) =>
                 createCatalogComponent(entries, theme, () => tui.requestRender(), () => done(), view?.id, deps.sessionSettings ? {
                     get: () => presentCatalog(readCatalog(location(host, deps)), deps.enrich),
                     models: () => deps.editableModels?.() ?? [],
+                    scopedModels: () => host.scopedModels ?? [],
                     settings: () => deps.sessionSettings!.snapshot(),
                     change: (id, key, value) => deps.sessionSettings!.change(id, key, value),
                     save(id) {
@@ -740,7 +760,44 @@ async function finishInspection(host: AgentCommandHost, commandResult: AgentComm
                         }
                         return { ok: saved.ok, message: saved.ok ? `Defaults saved (${saved.scope}): ${id}.` : saved.diagnostics.map((item) => item.message).join(" ") };
                     },
-                } : undefined), { overlay: true });
+                    resetToBundled(entry) {
+                        const source = entry.winningSource;
+                        if (!source) return { ok: false, message: "The definition source is unavailable. Reopen its settings." };
+                        const reset = resetRuntimeToBundled({ ...location(host, deps), id: entry.id, expectedPath: source.path, expectedDigest: source.contentDigest });
+                        if (reset.ok) {
+                            commandResult.wrote = true;
+                            commandResult.path = reset.path;
+                            commandResult.scope = "user";
+                            try { deps.sessionSettings!.reset(entry.id); }
+                            catch (error) {
+                                return { ok: false, message: `Saved defaults reset for ${entry.id}, but current-session overrides remain active: ${error instanceof Error ? error.message : String(error)}. Retry Reset to bundled to clear them.` };
+                            }
+                        }
+                        return { ok: reset.ok, message: reset.ok
+                            ? `Bundled model/effort restored: ${entry.id}. Role instructions unchanged.`
+                            : reset.diagnostics.map(item => item.message).join(" ") };
+                    },
+                    resetDefinition(entry) {
+                        if (entry.identity.scope === "bundled") return { ok: true, message: `Already using bundled instructions: ${entry.id}. Model/effort unchanged.` };
+                        const source = entry.winningSource;
+                        if (!source) return { ok: false, message: "The definition source is unavailable. Reopen its settings." };
+                        const reset = resetUserDefinition({ ...location(host, deps), id: entry.id, expectedPath: source.path, expectedDigest: source.contentDigest });
+                        if (reset.ok) {
+                            commandResult.wrote = true;
+                            commandResult.path = reset.path;
+                            commandResult.scope = "user";
+                        }
+                        return { ok: reset.ok, message: reset.ok
+                            ? `Bundled instructions restored: ${entry.id}. Model/effort kept. Backup: ${reset.backupPath}.`
+                            : reset.diagnostics.map(item => item.message).join(" ") };
+                    },
+                } : undefined, () => viewportHeight), {
+                    overlay: true,
+                    overlayOptions: {
+                        anchor: "top-left", width: "100%", maxHeight: "100%", margin: 0,
+                        visible: (_width, height) => { viewportHeight = height; return true; },
+                    },
+                });
             if (deps.sessionSettings) {
                 const current = readCatalog(location(host, deps));
                 const refreshed = view ? presentCatalogEntry(current, view.id, deps.enrich) : presentCatalog(current, deps.enrich);

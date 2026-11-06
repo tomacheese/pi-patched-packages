@@ -8,11 +8,12 @@
  * `defaultTools` absent → the built-in SAFE_DEFAULT_TOOLS.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { SELF_SPEC } from "./extensions.ts";
+import { installedPackage } from "./child-dependencies.mjs";
 import { isDelegationMode, type DelegationMode } from "./delegation.ts";
 import type { TimingSettings } from "./timing.ts";
 import { harnessSettingsPath, readHarnessSetting, updateHarnessSetting } from "./shared-harness-settings.ts";
@@ -33,6 +34,7 @@ export interface SubagentConfig extends TimingSettings {
     /**
      * Provider → extension package(s) that authenticate it. Model auth is not
      * tool-shaped: `xai/grok-4.5` needs pi-xai-oauth loaded whatever the tools.
+     * A built-in entry covers `ollama-cloud`; an entry here replaces it.
      */
     providerExtensions?: Record<string, string | string[]> | null;
     /**
@@ -73,7 +75,7 @@ export interface SubagentConfig extends TimingSettings {
 }
 
 /** Concurrency cap when config.json sets none. */
-export const DEFAULT_MAX_CONCURRENT = 4;
+export const DEFAULT_MAX_CONCURRENT = 6;
 
 export function isConcurrencyCap(value: unknown): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
@@ -84,24 +86,28 @@ export function normalizeConcurrencyCap(value: unknown): number {
 }
 
 /** Built-in default tool set when config.json sets nothing. */
-export const SAFE_DEFAULT_TOOLS = "read, bash, edit, write, web_search, web_fetch";
+export const SAFE_DEFAULT_TOOLS = "read, bash, edit, write, web_search, web_fetch, codemode";
 /** Safe default for a hermetic (clean) child where extension tools don't exist. */
 export const SAFE_CLEAN_TOOLS = "read, bash";
 
 let cached: SubagentConfig | undefined;
+let cachedIdentity: string | undefined;
+let configOverrideForTests = false;
 let configPathForTests: string | undefined;
 let bundledConfigPathForTests: string | undefined;
 
 /** Test seam. Pass undefined to reload config.json on the next loadConfig call. */
 export function setConfigForTests(next: SubagentConfig | undefined): void {
     cached = next;
+    cachedIdentity = undefined;
+    configOverrideForTests = next !== undefined;
 }
 
 /** Test seam. Isolate user config, optionally supplying a package fallback. */
 export function setConfigPathForTests(path: string | undefined, bundledPath?: string): void {
     configPathForTests = path;
     bundledConfigPathForTests = bundledPath;
-    cached = undefined;
+    setConfigForTests(undefined);
 }
 
 export function configPath(): string {
@@ -128,8 +134,12 @@ function savedConfig(): SubagentConfig {
     return user === undefined ? {} : parseConfig(user);
 }
 
+function bundledConfigPath(): string | undefined {
+    return bundledConfigPathForTests ?? (configPathForTests ? undefined : join(selfDir(), "config.json"));
+}
+
 function bundledConfig(): SubagentConfig {
-    const path = bundledConfigPathForTests ?? (configPathForTests ? undefined : join(selfDir(), "config.json"));
+    const path = bundledConfigPath();
     if (!path) return {};
     try {
         return readConfig(path);
@@ -138,12 +148,31 @@ function bundledConfig(): SubagentConfig {
     }
 }
 
+function configIdentity(): string {
+    const paths = [configPath(), bundledConfigPath(),
+        configPathForTests ? undefined : join(piAgentDir(), "extensions", "pi-better-subagents-config.json")];
+    return JSON.stringify(paths.map(path => {
+        if (!path) return null;
+        try {
+            const stat = statSync(path, { bigint: true });
+            return [path, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].map(String);
+        } catch (error) {
+            return [path, (error as NodeJS.ErrnoException).code];
+        }
+    }));
+}
+
 /** Saved user choices take precedence; missing/invalid files contribute no keys. */
 export function loadConfig(): SubagentConfig {
-    if (cached) return cached;
+    if (configOverrideForTests) return cached!;
+    const identity = configIdentity();
+    if (cached && cachedIdentity === identity) return cached;
     let user: SubagentConfig = {};
     try { user = savedConfig(); } catch { /* retain package fallback */ }
     cached = { ...bundledConfig(), ...user };
+    // Keep the pre-read identity: migration or a concurrent replacement must
+    // trigger another read rather than label an older value with a newer stat.
+    cachedIdentity = identity;
     return cached;
 }
 
@@ -162,10 +191,10 @@ export function writeSubagentSettings(settings: { delegationMode: DelegationMode
 
 function writeConfigSettings(settings: Partial<SubagentConfig>, path: string): void {
     if (path === configPath()) savedConfig();
-    const current = updateHarnessSetting("subagents", previous => ({
+    updateHarnessSetting("subagents", previous => ({
         ...(previous === undefined ? {} : parseConfig(previous)), ...settings,
     }), { agentDir: () => dirname(path) });
-    if (path === configPath()) cached = { ...bundledConfig(), ...current };
+    if (path === configPath()) setConfigForTests(undefined);
 }
 
 /** Normalize a comma/space tool list to pi's bare comma form: "a, b" → "a,b". */
@@ -194,10 +223,13 @@ function piAgentDir(): string {
  * a missing dependency instead of silently launching a child without it.
  * (`-e` accepts either a package directory or an entrypoint file — verified.)
  */
-export function resolveExtensionPath(spec: string): string | undefined {
+export function resolveExtensionPath(spec: string, declaringRoot?: string): string | undefined {
     if (spec === SELF_SPEC) return selfDir();
     const path = spec.startsWith("npm:")
-        ? join(piAgentDir(), "npm", "node_modules", spec.slice(4))
-        : spec;
-    return existsSync(path) ? path : undefined;
+        ? (declaringRoot && installedPackage(spec.slice(4), [declaringRoot])) ?? (existsSync(join(piAgentDir(), "npm", "node_modules", spec.slice(4)))
+            ? join(piAgentDir(), "npm", "node_modules", spec.slice(4))
+            : installedPackage(spec.slice(4), [declaringRoot, join(piAgentDir(), "npm"), selfDir(),
+                join(piAgentDir(), "npm", "node_modules", "pi-better-harness")]))
+        : declaringRoot && !spec.startsWith("/") ? join(declaringRoot, spec) : spec;
+    return path && existsSync(path) ? path : undefined;
 }

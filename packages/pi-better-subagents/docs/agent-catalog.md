@@ -1,6 +1,6 @@
 # Native agent catalog (`pi-agent/v1`)
 
-Portable role and named-agent definitions for `pi-better-subagents`. This is the local contract for DEV-23 / GitHub #289. It is not an Agentier importer, a Codex runtime, or a second launch path.
+Portable role and named-agent definitions for `pi-better-subagents`. This is the local contract for DEV-23 / GitHub #289. It is not an Agentier importer or a second launch path. The [shared worker catalog](worker-catalog.md) exposes these definitions to skills on Pi and Codex through host-specific planning, without launching workers itself.
 
 Normative behavior is DEV-23 and the accepted ADR `docs/adr/0003-native-agent-catalog-live-inheritance.md`. Field names below are the engineering schema those decisions require.
 
@@ -74,7 +74,13 @@ Credential-like keys (`token`, `apiKey`, `password`, `connectionString`, and sim
 
 ## Sources
 
-Precedence is project, then personal, then bundled. The higher source replaces the whole definition. Omitted agent fields inherit from the effective role, not from the shadowed agent.
+For external consumers, the repo-root `agent-catalog.yaml` publishes the shared
+definitions through a [Git subscription contract](catalog-subscription.md).
+This publication mechanism does not change local source precedence below.
+
+Markdown definition precedence is project, then personal, then bundled. The higher source replaces the whole definition. Omitted agent fields inherit from the effective role, not from the shadowed agent.
+
+Model and effort choices saved through `/agents` live separately in the catalog's `settings.json` (`version: 1`, with a `defaults` map keyed by role/agent id). They override only those fields, without shadowing the Markdown prompt. Branch edits win over saved preferences; trusted project preferences win over user preferences. User preferences do not override project-owned definitions. Existing Markdown overrides stay whole definitions until explicitly archived through **Reset to bundled** in Instructions. See [catalog operations](agent-catalog-operations.md#model-and-effort-edits).
 
 | Scope | Path |
 | --- | --- |
@@ -90,7 +96,7 @@ Role references use the same precedence. A missing or unusable role leaves the a
 
 ## Snapshots
 
-`loadCatalog` / `refreshCatalog` read the disk every time and return a new frozen snapshot. `digest` / `revision` is a sha256 of the canonical entries, unused sources, and snapshot diagnostics. `loadedAt` is not part of the digest. Callers must reuse one snapshot for every job in a batch. Later file edits do not mutate a snapshot already taken. `/agents reload` is an inspection operation owned by the operations unit; it is not required for the next `loadCatalog` to see edits.
+`loadCatalog` / `refreshCatalog` read the disk every time and return a new frozen snapshot. `digest` / `revision` is a sha256 of the canonical entries, unused sources, saved preferences and their sources, and snapshot diagnostics. `loadedAt` is not part of the digest. Callers must reuse one snapshot for every job in a batch. Later file edits do not mutate a snapshot already taken. `/agents reload` is an inspection operation owned by the operations unit; it is not required for the next `loadCatalog` to see edits.
 
 File diagnostics for an id live on that catalog entry. `snapshot.diagnostics` carries directory, trust, duplicate, and no-id failures. `resolveSelection`, `listCatalog`, and `inspectCatalog` are the launchability view; `schemaLaunchable` does not yet know whether an agent's role exists.
 
@@ -100,18 +106,20 @@ Model availability, same-tier fallback, and nearest-effort adjustment are not de
 
 | Role | Stored id | Name | Model | Effort | Tier |
 | --- | --- | --- | --- | --- | --- |
-| `researcher` | `role.researcher` | Researcher | `openai/gpt-6.1-sol` | medium | balanced |
+| `researcher` | `role.researcher` | Researcher | `openai/gpt-6.1-terra` | medium | balanced |
 | `explorer` | `role.explorer` | Explorer | `openai/gpt-6-luna` | medium | efficient |
 | `product-manager` | `role.product-manager` | Product Manager | `openai/gpt-6.1-sol` | medium | balanced |
 | `developer` | `role.developer` | Developer | `openai/gpt-6.1-sol` | high | balanced |
 | `reviewer` | `role.reviewer` | Reviewer | `openai/gpt-6-astra` | medium | frontier |
 | `architect` | `role.architect` | Architect | `openai/gpt-6-astra` | high | frontier |
+| `writer` | `role.writer` | Writer | `openai/gpt-6.1-terra` | medium | unset |
 
 Bundled descriptions are routing boundaries for coordinator mode. Researcher owns
 external and documentary evidence; Explorer maps repository code paths; Product
 Manager owns user-visible requirements; Architect owns technical boundaries;
 Developer owns implementation and focused tests; Reviewer owns independent change
-review. Each role's instruction body names excluded work and the neighboring role
+review; Writer owns drafting, editing, and polishing written content. Writer has
+no configured fallback tier. Each role's instruction body names excluded work and the neighboring role
 that owns it. Project and personal definitions may replace these bundled roles, so
 coordinators inspect the current effective descriptions rather than assuming this
 table is unchanged.

@@ -1,6 +1,6 @@
 # pi-better-subagents
 
-`pi-better-subagents` is a Pi extension for detached, sandboxed subagent runs that keep the foreground Pi session free.
+`pi-better-subagents` is a Pi extension for detached, optionally sandboxed subagent runs that keep the foreground Pi session free.
 
 ## Quick Answer
 
@@ -12,12 +12,36 @@ Use `pi-better-subagents` when you want Pi to launch independent agent work with
 
 ## Core Features
 - Non-blocking subagent launches, with an optional role and named-agent catalog (`docs/agent-catalog.md`, `docs/agent-catalog-lifecycle.md`).
+- Continue a saved conversation with `subagent_spawn({ session_id, prompt })`, or use `session_name` for a unique name in the current folder. Sessions persist by default. Lists show session IDs and search locally; `all:true` searches globally. Batch jobs use the same selectors. See [continuing a saved conversation](docs/usage.md#continuing-a-saved-conversation).
 - Typed foreground `subagent_spawn_batch` launch receipts for native Pi codemode (Pi 0.99.1+), preserving direct tool calls, per-run callbacks, and batch capacity/catalog guarantees. See [codemode batch launches](docs/usage.md#codemode-batch-launches).
-- Default OS write sandboxing on macOS and Linux.
+- Opt-in OS task sandboxing on macOS and Linux.
 - Explicit tool allowlists for child sessions.
 - Durable logs, result retrieval, and [failure observations](docs/failure-observations.md) independent of lifecycle status. A live child handles its own tool errors; the parent is woken only for actionable incidents, and children can classify handled failures with `failure_disposition`.
 - Live background-work navigator for active runs.
 - Harness-owned run timing: every run gets a no-progress wake (10 min), while wall-clock soft deadlines and hard ceilings are opt-in so productive agents are not stopped solely for taking a long time. Configure per spawn with `deadline_minutes`, `grace_minutes`, `max_minutes`, `stuck_minutes`, or globally in `config.json` / `PI_SUBAGENT_*_MINUTES`. See [usage notes](docs/usage.md#run-timing-deadline-ceiling-stuck).
+
+Every single or batch launch automatically joins one shared supervision watcher in the
+foreground Pi process. The last active run's exit or stop tears it down; a later
+launch starts it again. No separate background task or coordinator heartbeat is
+needed. Completion delivery retries use the callback batcher's own timer. Lost-run
+alerts retain supervision until their handoff is handled, so lost work is not silent.
+
+## Worker Ownership
+
+Every child launch, including clean, batch and unsandboxed launches, loads a Pi
+hook that keeps external CI/PR monitoring with its coordinator. Workers finish
+their assigned implementation or diagnosis, run focused checks, push only when
+authorized, write the result, and return. Pending CI is a valid handoff, not a pass.
+
+The hook refuses recognized `gh run watch`, `gh pr checks --watch`, and bundled
+delivery-watcher commands through `bash` and `run_application`. Short status reads,
+failed-log retrieval, and legitimate long local tests and builds remain allowed.
+If background tools are explicitly available to a child, recognized watcher
+commands are refused there too. Coordinator sessions are unaffected.
+
+This is an operational ownership guard, not a security boundary or a classifier
+for arbitrary programs. Indirect scripts and custom polling implementations still
+rely on the worker handoff contract. Command permissions and timeouts are unchanged.
 
 ## Install
 
@@ -31,19 +55,35 @@ Try it for one run:
 pi -e npm:pi-better-subagents
 ```
 
-Linux confinement requires a usable `bubblewrap` backend and Pi SDK 0.82.1 or newer. `/sandbox` controls the independent Subagents profile, which each launch freezes. Pi handles its own startup, authentication, and provider connection; task tools obey the selected file, command, and network permissions. Outside project defaults to Write: tasks write across home and temp but can remove files outside the workspace only in temp, hidden home directories, and worktree folders (Linux keeps ordinary home folders read-only instead). Confined children admit `read`, `write`, `edit`, and `bash`, the guarded `apply_patch` (Codex patches that follow the file rules), and the trusted tools ticked in `/sandbox` → Subagents · Tools (default `web_fetch` and `web_search`), which run outside the file rules. Other requested tools are reported as unavailable, with the reason. See [usage notes](https://github.com/1aboveio/pi-better-harness/blob/main/packages/pi-better-subagents/docs/usage.md#write-sandbox) for the runtime boundary and supported configurations.
+Sandboxing starts Off for fresh settings, including standalone subagents without published settings. Explicit saved profiles and session choices remain unchanged. Set `sandbox:true` for a confined launch; `sandbox:false` cannot bypass a human-enabled Subagents profile.
+
+Linux confinement requires a usable `bubblewrap` backend and Pi SDK 0.82.1 or newer. `/sandbox` controls the independent Subagents profile, which each launch freezes. Pi handles its own startup, authentication, and provider connection; task tools obey the selected file, command, and network permissions. Outside project defaults to Write: tasks write across home and temp but can remove files outside the workspace only in temp, hidden home directories, and worktree folders (Linux keeps ordinary home folders read-only instead). Confined children admit `read`, `write`, `edit`, and policy-permitted `bash` or guarded `run_application`, the guarded `apply_patch` (Codex patches that follow the file rules), and the trusted tools ticked in `/sandbox` → Subagents · Tools (default `web_fetch` and `web_search`), which run outside the file rules. Other requested tools are reported as unavailable, with the reason. For direct applications without shell scripts, set Subagents → Sandbox On, Run applications On, Shell scripts Off, and Command time limit to 10 min in `/sandbox`, then press Ctrl+S. This is an explicit choice, not the default. New launches capture the policy; running children keep theirs. See [usage notes](https://github.com/1aboveio/pi-better-harness/blob/main/packages/pi-better-subagents/docs/usage.md#write-sandbox) for the runtime boundary and supported configurations.
 
 ## Delegation Modes
 
 The user config sets `delegationMode` to `manual`, `adaptive` (default), or
 `coordinator`. `/subagents settings` (or `/subagents`) opens a settings page
-for delegation mode and the concurrent-subagent cap (default 4). Edits apply to
+for delegation mode and the concurrent-subagent cap (default 6). Edits apply to
 this session and persist across reloads; Ctrl+S saves both as defaults, and
 Reset to defaults clears
-session overrides. `/subagents mode manual|adaptive|coordinator` and
+session overrides. Agents opens the same catalog as `/agents`.
+`/subagents mode manual|adaptive|coordinator` and
 `/subagents cap <number>` are command equivalents; `/subagents save` persists
-both. Lowering the cap blocks new single and batch launches without stopping
-running work. The navigator's `main` row retains its mode-only controls:
+both. Lowering the cap blocks new single and batch launches, including launches
+still preparing, without stopping running work. Saved configuration changes are
+picked up on subsequent reads; explicit session overrides still take precedence.
+Before every model request, including continuations after tool calls,
+the foreground receives one temporary settings block with the current mode, cap,
+setting sources, revision, and running/reserved/available slots. The latest block
+replaces older snapshots and delegation guidance; it is not saved as conversation
+history. Changes reach the model at its next request, not during an in-flight
+response, and are not broadcast to running children. The cap is a ceiling, not a
+target number of agents. `subagent_settings` inspects the same effective state
+without changing it. Its revision is a stable fingerprint of mode, cap, and
+sources; occupancy changes do not change the revision. Admission rechecks capacity
+when spawning because the snapshot can become stale.
+
+The navigator's `main` row retains its mode-only controls:
 `m` cycles the session mode, `ctrl+s` saves that default, and `x`
 does not stop it. Manual delegates only on explicit user or workflow request, even with a
 plan. Adaptive delegates substantial independent work when useful. Coordinator
@@ -71,16 +111,21 @@ line says so, for example
 
 ## When To Use
 
+Skills can use the same role definitions on Pi and Codex through the standalone
+`pi-agent-catalog` JSON CLI, without starting Pi. The CLI checks supplied host
+capabilities and returns a worker plan; it never launches workers or substitutes
+prompt text for model selection. See [shared worker catalog](docs/worker-catalog.md).
+
 Use this package for independent coding, review, research, or verification work that can finish later. Do not use it for steps that need immediate foreground interaction or user clarification.
 
 ## Compatibility
 
 | Requirement | Support |
 |-------------|---------|
-| Pi | Required |
+| Pi | Required for worker execution through this extension; not for standalone catalog planning |
 | Install method | `pi install npm:pi-better-subagents` |
-| macOS sandboxing | Supported by default |
-| Linux sandboxing | Uses `bubblewrap` when available |
+| macOS sandboxing | Supported when enabled |
+| Linux sandboxing | Requires usable `bubblewrap` when enabled |
 | Development runtime | Node.js 22+ |
 
 ## Update Or Remove

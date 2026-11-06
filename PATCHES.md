@@ -15,7 +15,7 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 
 ## pi-better-subagents
 
-- upstream: 0.18.0
+- upstream: 0.26.2
 - patch: 0001-permission-hold-reported-failures.patch sha256:5d8c10e1cc217a715d2ba334bcb9a66593b170e4bf7a4de66a4cba0e4829ecd6
-- file: shared-failure-observations.ts sha256:1c30571b613f85c336a09cb3be3537a1b20f533f5a1f4530359f5ea742d06dda
-- file: tools.ts sha256:f08842b85dfb84ed43f79ea0bffc3e4d8a470f3bb6ca165e75ba9fa1ba145a84
+- file: shared-failure-observations.ts sha256:695d4b6166edb6f68722556c860a10ad35980465d06f3bfd25cf0197d7d7b02c
+- file: tools.ts sha256:2d98df1baec9f36a9ec3146638c7a631a1816395e83bc40b87f9af133083315d

@@ -2,11 +2,14 @@
 import { SettingsManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { canonicalizePath, describeSandboxSupport } from "./shared-sandbox-core.ts";
 import { GUARDED_TASK_TOOLS, installTaskTools, TASK_BUILTINS } from "./shared-task-sandbox.ts";
-import { parseTaskPolicy, type TaskPolicy } from "./task-policy.ts";
+import { parseTaskPolicy, RUN_APPLICATION, selectTaskTools, type TaskPolicy } from "./task-policy.ts";
 import { SANDBOX_POLICY_CHANNEL, SANDBOX_POLICY_REQUEST_CHANNEL } from "./permission-policy.ts";
 import { failureDispositionTool, intentBashDefinition } from "./child-incidents.ts";
 import { DISPOSITION_TOOL } from "./incident-model.ts";
 import { SandboxDiagnostics, diagnosticPackageVersion } from "./shared-sandbox-diagnostics.ts";
+import { fileURLToPath } from "node:url";
+import { claimTaskToolOwner } from "./task-tool-owner.ts";
+import { installChildCodemode } from "./child-codemode.ts";
 
 const TRUSTED_INLINE_SOURCE = "<inline:task-sandbox>";
 
@@ -31,7 +34,7 @@ export function trustedToolRefusal(policy: TaskPolicy, name: string, sourcePath:
     return undefined;
 }
 
-export default function taskGuard(pi: ExtensionAPI, input: unknown, fatal: (error: unknown) => never): void {
+export default function taskGuard(pi: ExtensionAPI, input: unknown, fatal: (error: unknown) => never, ownedTools = false): void {
     const policy = parseTaskPolicy(input);
     const support = describeSandboxSupport();
     if (!support.supported) throw new Error(`Task sandbox unavailable: ${support.reason}`);
@@ -54,18 +57,23 @@ export default function taskGuard(pi: ExtensionAPI, input: unknown, fatal: (erro
             diagnosticsWarned = true;
         },
     });
-    const boundary = installTaskTools(pi, { controller, cwd: process.cwd(), shellPath: () => shellPath,
+    const codemode = policy.tools.includes("codemode") && installChildCodemode(pi, true);
+    const toolApi = ownedTools ? { ...pi, registerTool: claimTaskToolOwner(pi) } : pi;
+    const installBoundary = () => installTaskTools(toolApi, { controller, cwd: process.cwd(), shellPath: () => shellPath,
         diagnostics,
-        trustedSources: [TRUSTED_INLINE_SOURCE],
+        trustedSources: [ownedTools ? fileURLToPath(new URL("./task-tool-owner.ts", import.meta.url)) : TRUSTED_INLINE_SOURCE],
         // Structured command intent (#315): validated before the confined command runs.
         bashDefinition: (cwd, operations) => intentBashDefinition(cwd, operations) as any,
         applyPatch: policy.applyPatch,
         processAccess: () => policy.permissions.processAccess ?? "off",
         // The disposition tool performs no file or command I/O; only this inline registration is admitted.
         // Trusted tools are admitted by name and package (ADR 0009).
-        admitExtensionTool: (name, _input, sourcePath) => (name === DISPOSITION_TOOL && sourcePath === TRUSTED_INLINE_SOURCE) ||
+        admitExtensionTool: (name, _input, sourcePath) => ((name === DISPOSITION_TOOL || (name === "codemode" && codemode)) && sourcePath === TRUSTED_INLINE_SOURCE) ||
             trustedToolRefusal(policy, name, sourcePath) === undefined,
     });
+    // Defer owned registrations until after SDK duplicate-name diagnostics.
+    // The final session_start handler still installs and verifies them before activation.
+    let boundary = ownedTools ? undefined : installBoundary();
     pi.registerTool(failureDispositionTool(() => currentCwd) as any);
     const profile = Object.freeze({ enabled: true, ...policy.permissions });
     const status = Object.freeze({
@@ -80,10 +88,17 @@ export default function taskGuard(pi: ExtensionAPI, input: unknown, fatal: (erro
         try {
             shellPath = SettingsManager.create(ctx.cwd, policy.agentDir, { projectTrusted: false }).getShellPath();
             currentCwd = ctx.cwd;
+            boundary ??= installBoundary();
             boundary.register(ctx.cwd);
             const builtins: readonly string[] = policy.applyPatch ? [...TASK_BUILTINS, ...GUARDED_TASK_TOOLS] : TASK_BUILTINS;
-            const selected = policy.tools.filter((name) => builtins.includes(name) &&
-                (name !== "process_list" || policy.permissions.processAccess === "read"));
+            const known = new Set<string>(builtins);
+            // A newer shared task sandbox may install the guarded application adapter
+            // before its name reaches this vendored builtin list. Admission still runs:
+            // assertInstalled verifies the installed schema identity and source.
+            if (!known.has(RUN_APPLICATION) && pi.getAllTools().some((tool) => tool.name === RUN_APPLICATION)) {
+                known.add(RUN_APPLICATION);
+            }
+            const selected = selectTaskTools(policy, [...known]);
             boundary.assertInstalled(selected);
             const inventory = pi.getAllTools();
             const trusted: string[] = [];
@@ -94,7 +109,8 @@ export default function taskGuard(pi: ExtensionAPI, input: unknown, fatal: (erro
                 const reason = registered ? trustedToolRefusal(policy, name, registered.sourceInfo?.path) : `${name} was not registered by its package`;
                 if (reason) refused.push({ name, reason }); else trusted.push(name);
             }
-            const activated = selected.length || trusted.length ? [...selected, ...trusted, DISPOSITION_TOOL] : selected;
+            const activated = selected.length || trusted.length || codemode
+                ? [...selected, ...trusted, ...(codemode ? ["codemode"] : []), DISPOSITION_TOOL] : selected;
             pi.setActiveTools(activated);
             const active = new Set(pi.getActiveTools());
             if (active.size !== activated.length || activated.some((name) => !active.has(name))) {
