@@ -1,0 +1,91 @@
+diff --git a/src/index.ts b/src/index.ts
+index 74da881..d349690 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -161,6 +161,9 @@ export function idleContinuationDelay(noProgressRetries: number, baseMs = IDLE_C
+   return Math.min(MAX_TIMER_DELAY_MS, baseMs * (1 + Math.max(0, noProgressRetries)));
+ }
+ 
++/** How long a no-progress hold lasts before the goal gets one more chance without a human. */
++const HOLD_RELEASE_DELAY_MS = 30 * 60_000;
++
+ /** Longest wait between continuations while the goal does nothing but wait. */
+ const IDLE_ONLY_MAX_DELAY_MS = 30 * 60_000;
+ 
+@@ -425,6 +428,9 @@ export default function (pi: ExtensionAPI): void {
+   let providerLimitResetAt = 0;
+   /** The last run ended because the login was rejected; consumed when the run settles. */
+   let authFailurePending = false;
++  let holdReleaseTimer: ReturnType<typeof setTimeout> | undefined;
++  /** Goals whose no-progress hold was already released once on a timer. */
++  const holdReleasedGoals = new Set<string>();
+   let preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true };
+   // Keep the audit trail. The opt-out only changes which reports can force a Goal hold.
+   const currentPermissionHold = (ctx: ExtensionContext, goalId: string): PermissionHold => {
+@@ -689,6 +695,10 @@ export default function (pi: ExtensionAPI): void {
+       idleContinuationTimer = undefined;
+     }
+     idleContinuationSignature = "";
++    if (holdReleaseTimer) {
++      clearTimeout(holdReleaseTimer);
++      holdReleaseTimer = undefined;
++    }
+   }
+ 
+   const scheduleIdleContinuation = (
+@@ -728,6 +738,33 @@ export default function (pi: ExtensionAPI): void {
+     idleContinuationTimer.unref?.();
+   };
+ 
++  /**
++   * After a no-progress hold lasts HOLD_RELEASE_DELAY_MS, give the goal one more attempt (once per goal):
++   * the next identical outcome holds it again immediately. Holds with a reason (a rejected login, a
++   * permission blocker) are never released here.
++   */
++  const scheduleHoldRelease = (goal: GoalSnapshot, ctx: ExtensionContext): void => {
++    if (WAKE_DISABLED || !preferences.autoContinue || holdReleasedGoals.has(goal.goalId)) return;
++    if (holdReleaseTimer) clearTimeout(holdReleaseTimer);
++    holdReleaseTimer = setTimeout(() => {
++      holdReleaseTimer = undefined;
++      const current = getGoal(ctx);
++      const state = current ? currentContinuationState(ctx, current.goalId) : null;
++      if (!current || current.goalId !== goal.goalId || !isPokeable(current) || !state?.blocked || state.holdReason !== undefined) return;
++      if (currentPermissionHold(ctx, current.goalId).blockers.length > 0) return;
++      holdReleasedGoals.add(current.goalId);
++      appendContinuationState({
++        ...state,
++        blocked: false,
++        noProgressRetries: Math.max(0, MAX_NO_PROGRESS_RETRIES - 1),
++        updatedAt: Math.floor(Date.now() / 1000),
++      });
++      refreshGoalWidget?.();
++      scheduleIdleContinuation(current, ctx, "continuation");
++    }, HOLD_RELEASE_DELAY_MS);
++    holdReleaseTimer.unref?.();
++  };
++
+   const sendIdleContinuationAfterAudit = async (
+     goalId: string,
+     ctx: ExtensionContext,
+@@ -1726,7 +1763,12 @@ export default function (pi: ExtensionAPI): void {
+       return;
+     }
+     const previous = currentContinuationState(ctx, goal.goalId) ?? createContinuationState(goal.goalId);
+-    if (previous.blocked) return;
++    if (previous.blocked) {
++      // A turn of fresh observable work (not a mere wait, not a rejected login) means the hold no
++      // longer describes the goal, for example after a loop wake-up or background completion.
++      const fresh = previous.holdReason === undefined && !evidence.idleOnly && evidence.signature !== previous.lastEvidenceSignature;
++      if (!fresh) return;
++    }
+     const repeated = previous.lastEvidenceSignature === evidence.signature;
+     const noProgressRetries = repeated ? previous.noProgressRetries + 1 : 0;
+     // Waiting is not stuck: an idle-only streak backs off (see idleOnlyDelay) but never holds the goal.
+@@ -1744,6 +1786,7 @@ export default function (pi: ExtensionAPI): void {
+       updatedAt: Math.floor(now / 1000),
+     });
+     if (blocked) {
++      scheduleHoldRelease(goal, ctx);
+       refreshGoalWidget?.();
+       if (ctx.hasUI) {
+         ctx.ui.notify(

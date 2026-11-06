@@ -1,0 +1,55 @@
+diff --git a/src/continuation.ts b/src/continuation.ts
+index 2995a11..fe927bd 100644
+--- a/src/continuation.ts
++++ b/src/continuation.ts
+@@ -110,7 +110,7 @@ export function continuationEvidence(messages: readonly unknown[]): Continuation
+   // A run that ended in a provider error is a failed attempt, not a deliberate wait: it must keep
+   // counting as "no observable action" so a persistent failure still reaches the retry limit.
+   const errored = messages.some((candidate) => isRecord(candidate) && candidate.role === "assistant" && candidate.stopReason === "error");
+-  const idleOnly = !errored && toolNames.every((name) => READ_ONLY_IDLE_TOOLS.has(name)) &&
++  const idleOnly = !errored && toolNames.length > 0 && toolNames.every((name) => READ_ONLY_IDLE_TOOLS.has(name)) &&
+     !records.some((record) => isRecord(record) && record.role === "toolResult" && record.isError === true);
+   if (idleOnly) {
+     return { ...IDLE_ONLY_EVIDENCE, idleOnly: true };
+diff --git a/src/index.ts b/src/index.ts
+index 29e97da..049ca72 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -700,10 +700,6 @@ export default function (pi: ExtensionAPI): void {
+       idleContinuationTimer = undefined;
+     }
+     idleContinuationSignature = "";
+-    if (holdReleaseTimer) {
+-      clearTimeout(holdReleaseTimer);
+-      holdReleaseTimer = undefined;
+-    }
+   }
+ 
+   const scheduleIdleContinuation = (
+@@ -1776,12 +1772,7 @@ export default function (pi: ExtensionAPI): void {
+       return;
+     }
+     const previous = currentContinuationState(ctx, goal.goalId) ?? createContinuationState(goal.goalId);
+-    if (previous.blocked) {
+-      // A turn of fresh observable work (not a mere wait, not a rejected login) means the hold no
+-      // longer describes the goal, for example after a loop wake-up or background completion.
+-      const fresh = previous.holdReason === undefined && !evidence.idleOnly && evidence.signature !== previous.lastEvidenceSignature;
+-      if (!fresh) return;
+-    }
++    if (previous.blocked) return;
+     const repeated = previous.lastEvidenceSignature === evidence.signature;
+     const noProgressRetries = repeated ? previous.noProgressRetries + 1 : 0;
+     // Waiting is not stuck: an idle-only streak backs off (see idleOnlyDelay) but never holds the goal.
+diff --git a/src/provider-limit.ts b/src/provider-limit.ts
+index 8cd7178..0e05543 100644
+--- a/src/provider-limit.ts
++++ b/src/provider-limit.ts
+@@ -5,7 +5,7 @@
+  */
+ export function providerLimitResetMs(message: unknown): number | undefined {
+   if (typeof message !== "string") return undefined;
+-  const match = /resets?\s+in\s+(?:~\s*)?(\d+(?:\.\d+)?)\s*(h|m)/i.exec(message);
++  const match = /resets?\s+in\s+(?:~\s*)?(\d+(?:\.\d+)?)\s*(h|m)(?![a-z])/i.exec(message);
+   if (!match) return undefined;
+   const value = Number.parseFloat(match[1] ?? "");
+   if (!Number.isFinite(value) || value <= 0) return undefined;

@@ -1,0 +1,48 @@
+diff --git a/src/index.ts b/src/index.ts
+index 8fb2a5b..29e97da 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -162,7 +162,7 @@ export function idleContinuationDelay(noProgressRetries: number, baseMs = IDLE_C
+ }
+ 
+ /** Objectives that ask for work without an end: the model may not declare them complete. */
+-const STANDING_GOAL = /無期限|定期的|継続的に|常時監視|indefinite|ongoing|periodic|recurring|forever/i;
++const STANDING_GOAL = /無期限|定期的|継続的に|常時監視|\b(?:indefinite(?:ly)?|forever|continuously monitor\w*|monitor\w* (?:continuously|indefinitely)|periodic(?:ally)? (?:check|monitor|audit)\w*|ongoing monitor\w*)\b/i;
+ 
+ /** How long a no-progress hold lasts before the goal gets one more chance without a human. */
+ const HOLD_RELEASE_DELAY_MS = 30 * 60_000;
+@@ -507,6 +507,7 @@ export default function (pi: ExtensionAPI): void {
+     lastAgentEvidence = null;
+     providerLimitStreak = 0;
+     providerLimitResetAt = 0;
++    authFailurePending = false;
+     const previous = getGoal(ctx);
+     const wasVisible = previous !== null && isGoalClockVisible(previous);
+     pi.appendEntry(EXTENSION_NAME, goalSetEntry(goal, source));
+@@ -535,6 +536,7 @@ export default function (pi: ExtensionAPI): void {
+     lastAgentEvidence = null;
+     providerLimitStreak = 0;
+     providerLimitResetAt = 0;
++    authFailurePending = false;
+     const current = getGoal(ctx);
+     const wasVisible = current !== null && isGoalClockVisible(current);
+     // Clearing pauses a Harness-bound outcome; it never deletes or completes it.
+@@ -1405,6 +1407,7 @@ export default function (pi: ExtensionAPI): void {
+     lastAgentEvidence = null;
+     providerLimitStreak = 0;
+     providerLimitResetAt = 0;
++    authFailurePending = false;
+     collecting = false;
+     collectionPending = false;
+     currentCtx = ctx;
+diff --git a/src/provider-limit.ts b/src/provider-limit.ts
+index afc4027..8cd7178 100644
+--- a/src/provider-limit.ts
++++ b/src/provider-limit.ts
+@@ -18,5 +18,5 @@ export function providerLimitResetMs(message: unknown): number | undefined {
+  */
+ export function isAuthFailureMessage(message: unknown): boolean {
+   return typeof message === "string" &&
+-    /invalidated oauth token|token_revoked|\b401\b|unauthori[sz]ed|invalid[ _-]?api[ _-]?key|authentication (?:failed|error)|please (?:log ?in|sign ?in) again/i.test(message);
++    /invalidated oauth token|token_revoked|\b(?:http|status(?: code)?)[ :]*401\b|unauthori[sz]ed|invalid[ _-]?api[ _-]?key|authentication (?:failed|error)|please (?:log ?in|sign ?in) again/i.test(message);
+ }

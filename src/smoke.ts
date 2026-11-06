@@ -240,6 +240,51 @@ function checkResetParse(outDir: string): void {
   console.log('reset parser: ok')
 }
 
+/**
+ * Guards the pure helpers of the patched `pi-better-goal`: the reset hint
+ * parser, the authentication failure matcher and the idle-only turn
+ * classification (a waiting turn must repeat its signature, a failed provider
+ * call must not count as waiting). Throws when the child script exits non-zero.
+ * @param outDir Dist directory
+ */
+function checkGoalHelpers(outDir: string): void {
+  const source = path.join(outDir, 'packages', 'pi-better-goal', 'src')
+  const script = `
+    import { providerLimitResetMs, isAuthFailureMessage } from ${JSON.stringify(path.join(source, 'provider-limit.ts'))}
+    import { continuationEvidence } from ${JSON.stringify(path.join(source, 'continuation.ts'))}
+    const assert = (ok, message) => { if (!ok) throw new Error(message) }
+    const hours = (text) => (providerLimitResetMs(text) ?? 0) / 3600000
+    assert(hours('Codex usage limit reached (plus plan). Resets in ~125h.') === 125, 'reset hint ~125h')
+    assert(hours('Resets in ~30m.') === 0.5, 'reset hint ~30m')
+    assert(providerLimitResetMs('The usage limit has been reached') === undefined, 'no hint')
+    const started = Date.now()
+    assert(providerLimitResetMs('resets in' + ' '.repeat(50000) + 'x') === undefined && Date.now() - started < 1000, 'reset hint regex must stay linear')
+    assert(isAuthFailureMessage('Encountered invalidated oauth token for user, failing request'), 'auth failure')
+    assert(isAuthFailureMessage('HTTP 401 Unauthorized'), 'http 401')
+    assert(!isAuthFailureMessage('request 4012 context length 401 tokens over'), 'a bare number is not a 401')
+    assert(!isAuthFailureMessage('fetch failed'), 'network failure is not an auth failure')
+    const assistant = (content, extra = {}) => ({ role: 'assistant', content, ...extra })
+    const text = (value) => [{ type: 'text', text: value }]
+    const call = (name) => [{ type: 'toolCall', name, arguments: {} }]
+    const listed = continuationEvidence([assistant(call('LoopList')), { role: 'toolResult', toolName: 'LoopList', content: text('next fire 10:05') }])
+    const again = continuationEvidence([assistant(call('MonitorList')), { role: 'toolResult', toolName: 'MonitorList', content: text('next fire 10:09') }])
+    assert(listed.idleOnly && listed.signature === again.signature, 'status lookups are idle-only and share one signature')
+    const chat = continuationEvidence([assistant(text('I cannot proceed'))])
+    assert(!chat.idleOnly, 'a text-only turn is ordinary evidence')
+    assert(providerLimitResetMs('resets in 500ms') === undefined, 'ms is not minutes')
+    const worked = continuationEvidence([assistant(call('bash')), { role: 'toolResult', toolName: 'bash', content: text('ok') }])
+    assert(!worked.idleOnly, 'real work is not idle-only')
+    const failed = continuationEvidence([assistant([], { stopReason: 'error', errorMessage: 'fetch failed' })])
+    assert(!failed.idleOnly && failed.summary === 'no observable action', 'a provider failure stays no observable action')
+  `
+  execFileSync(
+    process.execPath,
+    ['--experimental-strip-types', '--input-type=module', '-e', script],
+    { stdio: 'inherit' }
+  )
+  console.log('goal helpers: ok')
+}
+
 /** Runs the smoke test. */
 async function main(): Promise<void> {
   const repoRoot = process.cwd()
@@ -289,6 +334,7 @@ async function main(): Promise<void> {
     checkIncidentModel(outDir)
 
     checkResetParse(outDir)
+    checkGoalHelpers(outDir)
     const checked = await checkPatchEffects(repoRoot, outDir)
     console.log(`patch effects: ${String(checked)} file(s) verified`)
   } finally {

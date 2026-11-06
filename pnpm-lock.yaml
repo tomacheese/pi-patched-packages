@@ -203,8 +203,8 @@ importers:
         specifier: 0.4.1
         version: 0.4.1(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))
       pi-better-goal:
-        specifier: 0.11.0
-        version: 0.11.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
+        specifier: 0.12.1
+        version: 0.12.1(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27)
       pi-better-subagents:
         specifier: 0.27.2
         version: 0.27.2(@earendil-works/pi-ai@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)
@@ -2856,8 +2856,8 @@ packages:
       '@earendil-works/pi-coding-agent':
         optional: true
 
-  pi-better-goal@0.11.0:
-    resolution: {integrity: sha512-YupKakIcNv1FH0q/GGi8iGyVLA7DCnoG7ccqFdefS70YvR8ytSKrg/KY00M//DEpnjnrQU0miNaNAAyDipKKOQ==}
+  pi-better-goal@0.12.1:
+    resolution: {integrity: sha512-9jfu13p96yEMUN+x3YUxgFjkGRcyMrq96cSZrpgsBC9KKwQczXZ/KFT1aAr7MwLVyJ/KKyx1wUaVhROmIVnAhg==}
     engines: {node: '>=22.0.0'}
     peerDependencies:
       '@earendil-works/pi-coding-agent': '>=0.84.4'
@@ -6635,7 +6635,7 @@ snapshots:
     optionalDependencies:
       '@earendil-works/pi-coding-agent': 1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
 
-  pi-better-goal@0.11.0(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27):
+  pi-better-goal@0.12.1(@earendil-works/pi-coding-agent@1.5.0(@aws-sdk/credential-provider-node@3.972.93)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.0)(typebox@1.3.27):
     dependencies:
       proper-lockfile: 4.1.2
       yaml: 2.9.1

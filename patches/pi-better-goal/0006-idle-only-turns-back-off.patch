@@ -1,0 +1,106 @@
+diff --git a/src/continuation.ts b/src/continuation.ts
+index e617757..2995a11 100644
+--- a/src/continuation.ts
++++ b/src/continuation.ts
+@@ -3,8 +3,23 @@ import { createHash } from "node:crypto";
+ export interface ContinuationEvidence {
+   signature: string;
+   summary: string;
++  /** The turn only waited: no tool calls, or only read-only status lookups. Its text and results vary and prove nothing. */
++  idleOnly: boolean;
+ }
+ 
++/** Read-only status lookups; a turn that calls only these did no work. */
++const READ_ONLY_IDLE_TOOLS = new Set([
++  "LoopList",
++  "MonitorList",
++  "get_goal",
++  "bg_task_list",
++  "subagent_list",
++  "get_background_activity",
++]);
++
++/** Signature and summary shared by every idle-only turn, so waiting repeats instead of looking like new work. */
++export const IDLE_ONLY_EVIDENCE = { signature: "idle-only", summary: "idle-only" } as const;
++
+ interface MessageLike {
+   role?: unknown;
+   content?: unknown;
+@@ -92,11 +107,21 @@ export function continuationEvidence(messages: readonly unknown[]): Continuation
+     }
+   }
+ 
++  // A run that ended in a provider error is a failed attempt, not a deliberate wait: it must keep
++  // counting as "no observable action" so a persistent failure still reaches the retry limit.
++  const errored = messages.some((candidate) => isRecord(candidate) && candidate.role === "assistant" && candidate.stopReason === "error");
++  const idleOnly = !errored && toolNames.every((name) => READ_ONLY_IDLE_TOOLS.has(name)) &&
++    !records.some((record) => isRecord(record) && record.role === "toolResult" && record.isError === true);
++  if (idleOnly) {
++    return { ...IDLE_ONLY_EVIDENCE, idleOnly: true };
++  }
++
+   const payload = canonicalJson(records.length > 0 ? records : [{ role: "empty" }]);
+   const signature = createHash("sha256").update(payload).digest("hex");
+   const distinctTools = [...new Set(toolNames)];
+   return {
+     signature,
+     summary: distinctTools.length > 0 ? distinctTools.join(", ") : "no observable action",
++    idleOnly: false,
+   };
+ }
+\ No newline at end of file
+diff --git a/src/index.ts b/src/index.ts
+index dec12b0..74da881 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -28,7 +28,7 @@ import {
+   validateTokenBudget,
+   type GoalEntrySource,
+ } from "./goal-state.js";
+-import { continuationEvidence, type ContinuationEvidence } from "./continuation.js";
++import { continuationEvidence, IDLE_ONLY_EVIDENCE, type ContinuationEvidence } from "./continuation.js";
+ import { permissionBlockerKey } from "./shared-permission-blocker.js";
+ import { currentPermissionHold as readPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, permissionResolvedRecord, reportedPermissionBlockers, reportedPermissionGap, reportedPermissionResolutions, type PermissionHold } from "./permission-hold.js";
+ import { publishGoalGuidance } from "./prompt.js";
+@@ -161,6 +161,20 @@ export function idleContinuationDelay(noProgressRetries: number, baseMs = IDLE_C
+   return Math.min(MAX_TIMER_DELAY_MS, baseMs * (1 + Math.max(0, noProgressRetries)));
+ }
+ 
++/** Longest wait between continuations while the goal does nothing but wait. */
++const IDLE_ONLY_MAX_DELAY_MS = 30 * 60_000;
++
++/**
++ * Exponential backoff for a goal that keeps doing nothing but waiting (status lookups, "monitoring
++ * continues"): the base period, doubled with every identical idle turn, capped at 30 minutes.
++ * @param idleTurns Identical idle-only turns in a row before this one
++ * @param baseMs First wait
++ */
++export function idleOnlyDelay(idleTurns: number, baseMs = IDLE_CONTINUATION_DELAY_MS): number {
++  const doublings = Math.min(Math.max(0, idleTurns), 30);
++  return Math.min(MAX_TIMER_DELAY_MS, Math.max(baseMs, Math.min(IDLE_ONLY_MAX_DELAY_MS, baseMs * 2 ** doublings)));
++}
++
+ /** Slack after a hinted reset time so the first retry does not land just before it. */
+ const PROVIDER_LIMIT_RESET_MARGIN_MS = 60_000;
+ 
+@@ -708,7 +722,9 @@ export default function (pi: ExtensionAPI): void {
+         kind === "continuation" ? providerLimitDelay(providerLimitStreak) : IDLE_CONTINUATION_DELAY_MS,
+         providerLimitResetAt - Date.now() + PROVIDER_LIMIT_RESET_MARGIN_MS,
+       ))
+-      : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0)));
++      : kind === "continuation" && currentContinuationState(ctx, goal.goalId)?.lastEvidenceSummary === IDLE_ONLY_EVIDENCE.summary
++        ? idleOnlyDelay(currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0)
++        : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0)));
+     idleContinuationTimer.unref?.();
+   };
+ 
+@@ -1713,7 +1729,8 @@ export default function (pi: ExtensionAPI): void {
+     if (previous.blocked) return;
+     const repeated = previous.lastEvidenceSignature === evidence.signature;
+     const noProgressRetries = repeated ? previous.noProgressRetries + 1 : 0;
+-    const blocked = repeated && noProgressRetries >= MAX_NO_PROGRESS_RETRIES;
++    // Waiting is not stuck: an idle-only streak backs off (see idleOnlyDelay) but never holds the goal.
++    const blocked = repeated && noProgressRetries >= MAX_NO_PROGRESS_RETRIES && !evidence.idleOnly;
+     const now = Date.now();
+     appendContinuationState({
+       goalId: goal.goalId,

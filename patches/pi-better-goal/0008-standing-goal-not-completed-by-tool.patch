@@ -1,0 +1,39 @@
+diff --git a/src/index.ts b/src/index.ts
+index d349690..8fb2a5b 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -161,6 +161,9 @@ export function idleContinuationDelay(noProgressRetries: number, baseMs = IDLE_C
+   return Math.min(MAX_TIMER_DELAY_MS, baseMs * (1 + Math.max(0, noProgressRetries)));
+ }
+ 
++/** Objectives that ask for work without an end: the model may not declare them complete. */
++const STANDING_GOAL = /無期限|定期的|継続的に|常時監視|indefinite|ongoing|periodic|recurring|forever/i;
++
+ /** How long a no-progress hold lasts before the goal gets one more chance without a human. */
+ const HOLD_RELEASE_DELAY_MS = 30 * 60_000;
+ 
+@@ -1219,8 +1222,8 @@ export default function (pi: ExtensionAPI): void {
+   pi.registerTool({
+     name: "update_goal",
+     label: "Update Goal",
+-    description: "Mark the current pi-better-goal objective complete after a completion audit.",
+-    promptSnippet: "Mark the current Codex-style goal complete after verification.",
++    description: "Mark the current pi-better-goal objective complete after a completion audit. A standing goal (indefinite, periodic or ongoing monitoring) is never complete through this tool; only the user completes it.",
++    promptSnippet: "Mark the current Codex-style goal complete after verification; never for a standing (indefinite or periodic) goal.",
+     parameters: Type.Object({
+       status: Type.String({ description: "Only 'complete' is accepted." }),
+     }),
+@@ -1245,6 +1248,13 @@ export default function (pi: ExtensionAPI): void {
+           details: { ok: true, goal: current },
+         };
+       }
++      // A goal that asks for ongoing or periodic work has no finish line the model can verify.
++      if (STANDING_GOAL.test(current.objective)) {
++        return {
++          content: [{ type: "text", text: "This is a standing goal (indefinite, periodic or ongoing). Leave it active; only the user can complete it with /goal complete." }],
++          details: { ok: false, goal: current },
++        };
++      }
+       const gated = boundWorkflow(current, ctx);
+       const verdict = gated ? await completionGate(ctx.sessionManager.getBranch(), gated) : null;
+       if (verdict && !verdict.allow) {
