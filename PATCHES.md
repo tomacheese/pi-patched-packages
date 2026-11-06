@@ -46,3 +46,15 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 - file: shared-failure-observations.ts sha256:695d4b6166edb6f68722556c860a10ad35980465d06f3bfd25cf0197d7d7b02c
 - file: task-policy.ts sha256:81ddadec0967289a8408da3d250ab4743bbb0de07304a41acaecee67241ed822
 - file: tools.ts sha256:2d98df1baec9f36a9ec3146638c7a631a1816395e83bc40b87f9af133083315d
+
+## pi-loop-monitor
+
+- upstream: 0.2.8
+- patch: 0001-no-wake-for-monitor-started.patch sha256:945fa40dc72ce166a9a01d8184a1c57f8e496114ffa560c7f3488489e03c017a
+- patch: 0002-unlimited-maxfires-and-quiet-monitor-timeout.patch sha256:c8df19ff74a4fe765673fa82b7ca176efa3043f4ed9121667d6ad50f31e1108a
+- patch: 0003-wake-age-note.patch sha256:3f3e0f02dee43c13ecd9566a24b83b267d444192588e43063e6684554ce1b627
+- patch: 0004-provider-limit-stand-down.patch sha256:5b563c45a3ad41aa3565202335b045ce43ab75b98da8b2db8bed9de5276e4149
+- file: dist/index.js sha256:21c349d54ddbd355c6404c99015257ea21717773f97a904542b104fffa1d89e4
+- file: dist/runtime/notification-runtime.js sha256:2b201ca1f158872789c3af7657df3ee1417b08d40201d0f73276ea35ca88c43d
+- file: dist/tools/loop-tools.js sha256:a5cb492b01c1bf9c1e23fb5c306a5d97ec45839c36c3642eaee43c9453b8cf2c
+- file: dist/tools/monitor-tools.js sha256:f5be551003eb9d10cb05c57638d4be97d9a0cdfaf4b4ece89192a97f83d4c6c1
