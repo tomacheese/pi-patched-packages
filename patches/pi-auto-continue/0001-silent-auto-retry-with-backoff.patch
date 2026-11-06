@@ -1,0 +1,89 @@
+diff --git a/src/index.ts b/src/index.ts
+index fd5684d..e0f1bb8 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -25,7 +25,7 @@ import {
+ 	toPendingWaitFile,
+ 	writeHandoffFile,
+ } from "./handoff.ts";
+-import { hasResetCredits, preferredCodexBarProvider, selectResetWindow } from "./providers.ts";
++import { EXHAUSTED_PERCENT, hasResetCredits, preferredCodexBarProvider, selectResetWindow } from "./providers.ts";
+ import { isRateLimitError, parseErrorBodyReset, parseHeaderReset } from "./reset-parse.ts";
+ import { classifyUsageResult } from "./usage.ts";
+ import {
+@@ -49,10 +49,10 @@ import type { PluginConfig, PendingWait, QuotaResetInfo, Strategy, UsageSnapshot
+ const HANDOFF_TIMEOUT_MS = 60_000;
+ const USAGE_CACHE_MS = 60_000;
+ const THRESHOLD_CHECK_INTERVAL_MS = 5 * 60_000;
+-/** Shorter resets are throttles, not quota resets; auto mode asks instead of looping. */
++/** Minimum retry interval; short throttles must not trigger rapid model retries. */
+ const AUTO_MIN_WAIT_MS = 5 * 60_000;
+-/** Stop auto-resuming after this many consecutive rate limits. */
+-const MAX_CONSECUTIVE_AUTO_RESUMES = 3;
++/** Cap the backoff when quota reset data is missing or inaccurate. */
++const AUTO_MAX_RETRY_DELAY_MS = 60 * 60_000;
+ 
+ interface RateLimitEvidence {
+ 	rateLimited: boolean;
+@@ -445,9 +445,11 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 		// A CodexBar window that is actually exhausted is the most trustworthy
+ 		// source: the 429 itself often carries only a short retry hint.
+ 		const codexExhausted =
+-			usage.resetInfo && (usage.resetInfo.usedPercent ?? 0) >= config.handoffThreshold ? usage.resetInfo : null;
++			usage.resetInfo && (usage.resetInfo.usedPercent ?? 0) >= EXHAUSTED_PERCENT ? usage.resetInfo : null;
+ 
+-		return codexExhausted ?? headerInfo ?? usage.resetInfo ?? bodyInfo;
++		// Non-exhausted usage windows are not evidence of this specific 429.
++		// Prefer a bounded retry over waiting for an unrelated long window.
++		return codexExhausted ?? headerInfo ?? bodyInfo;
+ 	}
+ 
+ 	async function askDuration(
+@@ -552,37 +554,18 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 			);
+ 		}
+ 
+-		// Auto mode: silently wait when the reset is close and no credit is offered.
+-		if (
+-			config.autoMode === "auto" &&
+-			resetInfo &&
+-			!(usage.resetCreditsAvailable && config.resumeImmediatelyOnResetCredits) &&
+-			remainingMs >= AUTO_MIN_WAIT_MS &&
+-			remainingMs <= config.autoResumeMaxWaitMinutes * 60_000 &&
+-			autoResumeCount < MAX_CONSECUTIVE_AUTO_RESUMES
+-		) {
+-			autoResumeCount += 1;
+-			await armWait(ctx, { strategy, targetTime: resetInfo.resetsAt, provider });
++		// In auto mode a confirmed usage limit always schedules a wait, never a
++		// blocking selection dialog. Repeated failures back off rather than
++		// immediately retrying a stale/incorrect reset timestamp indefinitely.
++		if (config.autoMode === "auto") {
++			const backoffMs = Math.min(AUTO_MAX_RETRY_DELAY_MS, AUTO_MIN_WAIT_MS * 2 ** Math.min(autoResumeCount, 4));
++			const cappedResetWaitMs = Math.min(remainingMs, config.autoResumeMaxWaitMinutes * 60_000);
++			const waitMs = Math.max(backoffMs, cappedResetWaitMs);
++			autoResumeCount = Math.min(autoResumeCount + 1, 5);
++			logDebug(`auto mode wait: ${formatRemainingTime(waitMs)}; consecutive rate limits=${autoResumeCount}; reset source=${resetInfo?.source ?? "unknown"}`);
++			await armWait(ctx, { strategy, targetTime: new Date(Date.now() + waitMs), provider });
+ 			return;
+ 		}
+-		if (config.autoMode === "auto" && resetInfo && autoResumeCount >= MAX_CONSECUTIVE_AUTO_RESUMES) {
+-			ui.notify(
+-				`Auto mode resumed ${autoResumeCount} times without clearing the limit, so it is asking instead of looping. Use /ac to pick a longer wait.`,
+-				"warning",
+-			);
+-		}
+-		if (
+-			config.autoMode === "auto" &&
+-			resetInfo &&
+-			remainingMs > 0 &&
+-			remainingMs < AUTO_MIN_WAIT_MS &&
+-			autoResumeCount < MAX_CONSECUTIVE_AUTO_RESUMES
+-		) {
+-			ui.notify(
+-				`The reported reset is only ${formatRemainingTime(remainingMs)} away (below the ${formatRemainingTime(AUTO_MIN_WAIT_MS)} auto-mode floor); asking instead of resuming into a throttle.`,
+-				"warning",
+-			);
+-		}
+ 
+ 		const choices: Choice[] = [];
+ 		if (usage.resetCreditsAvailable && config.resumeImmediatelyOnResetCredits) {

@@ -12,13 +12,13 @@ Guidance for AI coding agents working in this repository. See `README.md` for us
 
 ## Overview
 
-This repository carries local patches on top of the upstream npm packages `pi-better-goal` and `pi-better-subagents` (from `1aboveio/pi-better-harness`). `src/build.ts` applies `patches/<package>/*.patch` to the pinned upstream packages and writes the result to `build/dist`; `release.yml` publishes that tree to the `dist` branch, which pi installs with `git:github.com/tomacheese/pi-patched-packages@dist`.
+This repository carries local patches on top of the upstream npm packages `pi-auto-continue`, `pi-better-goal` and `pi-better-subagents` (the latter two from `1aboveio/pi-better-harness`). `src/build.ts` applies `patches/<package>/*.patch` to the pinned upstream packages and writes the result to `build/dist`; `release.yml` publishes that tree to the `dist` branch, which pi installs with `git:github.com/tomacheese/pi-patched-packages@dist`.
 
 ## Rules
 
 - `master` contains hand-written files only. Generated output exists only on `dist` and in the git-ignored `build/` directory. Never commit generated files to `master`, and never push to `dist`, `v*` tags or Renovate branches by hand.
 - Do not add commits to Renovate-created PRs. When a Renovate bump needs a rebased patch, open a separate maintainer PR that bumps the exact pin and the lockfile together with the rebased patches.
-- Upstream versions are pinned exactly in `package.json` (`pi-better-goal`, `pi-better-subagents`, `@earendil-works/pi-coding-agent`). Keep them exact.
+- Upstream versions are pinned exactly in `package.json` (`pi-auto-continue`, `pi-better-goal`, `pi-better-subagents`, `@earendil-works/pi-coding-agent`). Keep them exact.
 - Patch files are package-root-relative (`a/src/index.ts`, not `a/packages/...`) and contain no test files. They are applied with `git apply --directory=<package dir>` from the repository root. Do not run `git apply` inside a package subdirectory of a git working tree: it silently skips the files.
 - Patches are developed and tested in a checkout of the upstream repository, then exported (see `README.md`). Do not copy upstream test files here, and keep `README.md` hunks out of patches.
 - The generated `package.json` and `PATCHES.md` must not contain a release number, date or commit SHA, so unchanged trees can be detected.
@@ -31,7 +31,7 @@ pnpm is required (`preinstall` runs `only-allow pnpm`). The Node.js version is i
 ```bash
 pnpm install        # install dependencies
 pnpm build          # build/dist
-pnpm smoke          # build, install into a scratch pi agent directory, check goal/agents commands
+pnpm smoke          # build, install into a scratch pi agent directory, check that each patched extension's command loads and that the patched reset parser works
 pnpm release        # publish build/dist (CI only: needs a push-capable origin and GH_TOKEN)
 pnpm lint           # prettier --check + eslint + tsc
 pnpm fix            # prettier --write + eslint --fix
