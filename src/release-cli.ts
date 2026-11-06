@@ -1,6 +1,6 @@
 /**
  * CLI entry of `pnpm release` (used by `release.yml`): publishes `build/dist`
- * to the `dist` branch, the `r<N>` tag and the GitHub Release.
+ * to the `dist` branch, the `v0.<N>.0` tag and the GitHub Release.
  */
 
 import { execFileSync } from 'node:child_process'

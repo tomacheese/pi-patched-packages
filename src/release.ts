@@ -1,5 +1,5 @@
 /**
- * Publishing of the `dist` branch, the `r<N>` tag and the GitHub Release.
+ * Publishing of the `dist` branch, the `v0.<N>.0` tag and the GitHub Release.
  *
  * Rules: a run publishes only when it is built from the current
  * head of `master`; `dist` is replaced by the full build output and only grows
@@ -59,15 +59,24 @@ export interface ReleaseOptions {
 /**
  * Computes the next release number from the existing tags.
  * @param tags All tag names
- * @returns Highest `r<number>` plus one (1 when there is none)
+ * @returns Highest `v0.<number>.0` number plus one (1 when there is none)
  */
 export function nextReleaseNumber(tags: readonly string[]): number {
   let highest = 0
   for (const tag of tags) {
-    const match = /^r(\d+)$/.exec(tag)
+    const match = /^v0\.(\d+)\.0$/.exec(tag)
     if (match) highest = Math.max(highest, Number(match[1]))
   }
   return highest + 1
+}
+
+/**
+ * Formats the tag of a release number.
+ * @param number_ Release number
+ * @returns Tag name such as `v0.3.0`
+ */
+export function releaseTag(number_: number): string {
+  return `v0.${String(number_)}.0`
 }
 
 /**
@@ -89,7 +98,7 @@ export function renderCommitMessage(
         : 'no patches'
     return `${item.name.replace(/^pi-better-/, '')} ${item.version} (${patches})`
   })
-  return `release r${String(number_)}: ${parts.join(', ')}, source ${sourceSha}`
+  return `release ${releaseTag(number_)}: ${parts.join(', ')}, source ${sourceSha}`
 }
 
 /**
@@ -229,16 +238,16 @@ export async function runRelease(
       const head = git(worktree, ['rev-parse', 'HEAD'])
       tag = git(repoRoot, ['tag', '--points-at', head])
         .split('\n')
-        .find((t) => /^r\d+$/.test(t))
+        .find((t) => /^v0\.\d+\.0$/.test(t))
       console.log('dist is up to date; no release commit')
       if (tag) ensureRelease(options, tag)
       return { kind: 'unchanged', tag }
     }
 
     const number_ = nextReleaseNumber(
-      git(repoRoot, ['tag', '--list', 'r*']).split('\n')
+      git(repoRoot, ['tag', '--list', 'v0.*']).split('\n')
     )
-    tag = `r${String(number_)}`
+    tag = releaseTag(number_)
     const stale = await fs.readdir(worktree)
     for (const entry of stale) {
       if (entry !== '.git') {

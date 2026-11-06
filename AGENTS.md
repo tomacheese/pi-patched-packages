@@ -16,7 +16,7 @@ This repository carries local patches on top of the upstream npm packages `pi-be
 
 ## Rules
 
-- `master` contains hand-written files only. Generated output exists only on `dist` and in the git-ignored `build/` directory. Never commit generated files to `master`, and never push to `dist`, `r*` tags or Renovate branches by hand.
+- `master` contains hand-written files only. Generated output exists only on `dist` and in the git-ignored `build/` directory. Never commit generated files to `master`, and never push to `dist`, `v*` tags or Renovate branches by hand.
 - Do not add commits to Renovate-created PRs. When a Renovate bump needs a rebased patch, open a separate maintainer PR that bumps the exact pin and the lockfile together with the rebased patches.
 - Upstream versions are pinned exactly in `package.json` (`pi-better-goal`, `pi-better-subagents`, `@earendil-works/pi-coding-agent`). Keep them exact.
 - Patch files are package-root-relative (`a/src/index.ts`, not `a/packages/...`) and contain no test files. They are applied with `git apply --directory=<package dir>` from the repository root. Do not run `git apply` inside a package subdirectory of a git working tree: it silently skips the files.
@@ -47,7 +47,7 @@ CI: the shared `book000/templates` Node.js pnpm workflow (`.github/workflows/nod
 | `src/build-dist.ts` | Build logic: copy pinned packages, apply patches, generate `package.json` and `PATCHES.md` |
 | `src/build.ts` | CLI entry of `pnpm build` |
 | `src/smoke.ts` | Smoke test used by `verify.yml` and `release.yml` |
-| `src/release.ts` | Publishing logic: supersession guard, `dist` commit, atomic push of `dist` and `r<N>`, GitHub Release |
+| `src/release.ts` | Publishing logic: supersession guard, `dist` commit, atomic push of `dist` and `v0.<N>.0`, GitHub Release |
 | `src/release-cli.ts` | CLI entry of `pnpm release` (used by `release.yml`) |
 | `patches/<package>/` | Ordered patches (`NNNN-<slug>.patch`) |
 
