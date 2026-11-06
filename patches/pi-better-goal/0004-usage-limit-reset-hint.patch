@@ -1,0 +1,119 @@
+diff --git a/src/index.ts b/src/index.ts
+index 8cc8b08..a592b99 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -32,6 +32,7 @@ import { continuationEvidence, type ContinuationEvidence } from "./continuation.
+ import { permissionBlockerKey } from "./shared-permission-blocker.js";
+ import { currentPermissionHold as readPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, permissionResolvedRecord, reportedPermissionBlockers, reportedPermissionGap, reportedPermissionResolutions, type PermissionHold } from "./permission-hold.js";
+ import { publishGoalGuidance } from "./prompt.js";
++import { providerLimitResetMs } from "./provider-limit.js";
+ import { observeGoalStall } from "./stall.js";
+ import {
+   flattenObjectiveForRail,
+@@ -160,6 +161,9 @@ export function idleContinuationDelay(noProgressRetries: number, baseMs = IDLE_C
+   return Math.min(MAX_TIMER_DELAY_MS, baseMs * (1 + Math.max(0, noProgressRetries)));
+ }
+ 
++/** Slack after a hinted reset time so the first retry does not land just before it. */
++const PROVIDER_LIMIT_RESET_MARGIN_MS = 60_000;
++
+ /** Longest wait between continuations while the provider keeps reporting a limit. */
+ const PROVIDER_LIMIT_MAX_DELAY_MS = 30 * 60_000;
+ 
+@@ -235,6 +239,18 @@ function endedWithProviderLimit(messages: readonly unknown[]): boolean {
+   return false;
+ }
+ 
++/** The errorMessage of the final assistant message when the run ended with stopReason "error". */
++function lastAssistantError(messages: readonly unknown[]): string | undefined {
++  for (let index = messages.length - 1; index >= 0; index -= 1) {
++    const message = messages[index];
++    if (!message || typeof message !== "object") continue;
++    const candidate = message as { role?: unknown; stopReason?: unknown; errorMessage?: unknown };
++    if (candidate.role !== "assistant") continue;
++    return candidate.stopReason === "error" && typeof candidate.errorMessage === "string" ? candidate.errorMessage : undefined;
++  }
++  return undefined;
++}
++
+ function activeItemsByKey(snapshot: ActivitySnapshot): Map<string, BackgroundWorkItem> {
+   const items = new Map<string, BackgroundWorkItem>();
+   for (const provider of snapshot.providers) {
+@@ -391,6 +407,8 @@ export default function (pi: ExtensionAPI): void {
+   let lastAgentEvidence: ContinuationEvidence | null = null;
+   // Consecutive runs that ended on a provider limit (in memory only); any other run resets it.
+   let providerLimitStreak = 0;
++  /** Epoch ms before which a limited provider is known not to answer (from a reset hint); 0 when unknown. */
++  let providerLimitResetAt = 0;
+   let preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true };
+   // Keep the audit trail. The opt-out only changes which reports can force a Goal hold.
+   const currentPermissionHold = (ctx: ExtensionContext, goalId: string): PermissionHold => {
+@@ -463,6 +481,7 @@ export default function (pi: ExtensionAPI): void {
+     executionGeneration += 1;
+     lastAgentEvidence = null;
+     providerLimitStreak = 0;
++    providerLimitResetAt = 0;
+     const previous = getGoal(ctx);
+     const wasVisible = previous !== null && isGoalClockVisible(previous);
+     pi.appendEntry(EXTENSION_NAME, goalSetEntry(goal, source));
+@@ -490,6 +509,7 @@ export default function (pi: ExtensionAPI): void {
+     executionGeneration += 1;
+     lastAgentEvidence = null;
+     providerLimitStreak = 0;
++    providerLimitResetAt = 0;
+     const current = getGoal(ctx);
+     const wasVisible = current !== null && isGoalClockVisible(current);
+     // Clearing pauses a Harness-bound outcome; it never deletes or completes it.
+@@ -681,8 +701,11 @@ export default function (pi: ExtensionAPI): void {
+       idleContinuationTimer = undefined;
+       idleContinuationSignature = "";
+       void sendIdleContinuationAfterAudit(goal.goalId, ctx, kind, snapshot);
+-    }, waitDelayMs ?? (kind === "continuation" && providerLimitStreak > 0
+-      ? providerLimitDelay(providerLimitStreak)
++    }, waitDelayMs ?? (providerLimitStreak > 0
++      ? Math.min(MAX_TIMER_DELAY_MS, Math.max(
++        kind === "continuation" ? providerLimitDelay(providerLimitStreak) : IDLE_CONTINUATION_DELAY_MS,
++        providerLimitResetAt - Date.now() + PROVIDER_LIMIT_RESET_MARGIN_MS,
++      ))
+       : idleContinuationDelay(kind === "continuation" ? currentContinuationState(ctx, goal.goalId)?.noProgressRetries ?? 0 : 0)));
+     idleContinuationTimer.unref?.();
+   };
+@@ -1316,6 +1339,7 @@ export default function (pi: ExtensionAPI): void {
+     backgroundDrainTracker = null;
+     lastAgentEvidence = null;
+     providerLimitStreak = 0;
++    providerLimitResetAt = 0;
+     collecting = false;
+     collectionPending = false;
+     currentCtx = ctx;
+@@ -1528,6 +1552,11 @@ export default function (pi: ExtensionAPI): void {
+     // records no evidence, so the no-progress counter is neither advanced nor reset.
+     const limited = currentRun && endedWithProviderLimit(event.messages);
+     if (currentRun) providerLimitStreak = limited ? providerLimitStreak + 1 : 0;
++    if (currentRun && !limited) providerLimitResetAt = 0;
++    if (limited) {
++      const resetMs = providerLimitResetMs(lastAssistantError(event.messages));
++      if (resetMs !== undefined) providerLimitResetAt = Date.now() + resetMs;
++    }
+     lastAgentEvidence = currentRun && !limited ? continuationEvidence(event.messages) : null;
+     // Only an observed editor Escape with pause disabled exempts this abort.
+     // Unknown interrupt sources retain the safety fallback on every host.
+diff --git a/src/provider-limit.ts b/src/provider-limit.ts
+new file mode 100644
+index 0000000..ecde6b1
+--- /dev/null
++++ b/src/provider-limit.ts
+@@ -0,0 +1,13 @@
++/**
++ * Milliseconds until the provider limit resets, read from a hint such as
++ * "Resets in ~125h" or "Resets in ~30m" in an error message; undefined when the
++ * message carries none.
++ */
++export function providerLimitResetMs(message: unknown): number | undefined {
++  if (typeof message !== "string") return undefined;
++  const match = /resets?\s+in\s+(?:~\s*)?(\d+(?:\.\d+)?)\s*(h|m)/i.exec(message);
++  if (!match) return undefined;
++  const value = Number.parseFloat(match[1] ?? "");
++  if (!Number.isFinite(value) || value <= 0) return undefined;
++  return value * (match[2]?.toLowerCase() === "h" ? 3_600_000 : 60_000);
++}

@@ -1,0 +1,94 @@
+diff --git a/src/goal-state.ts b/src/goal-state.ts
+index 9afe1b6..ef1eea0 100644
+--- a/src/goal-state.ts
++++ b/src/goal-state.ts
+@@ -36,6 +36,8 @@ export interface ContinuationState {
+   lastProgressAt?: number;
+   noProgressRetries: number;
+   blocked: boolean;
++  /** Why the hold started when it is not the no-progress retry limit (for example "auth"). */
++  holdReason?: string;
+   updatedAt: number;
+ }
+ 
+@@ -95,6 +97,7 @@ function isContinuationState(value: unknown): value is ContinuationState {
+     Number.isInteger(candidate.noProgressRetries) &&
+     candidate.noProgressRetries >= 0 &&
+     typeof candidate.blocked === "boolean" &&
++    (candidate.holdReason === undefined || typeof candidate.holdReason === "string") &&
+     typeof candidate.updatedAt === "number"
+   );
+ }
+diff --git a/src/index.ts b/src/index.ts
+index a592b99..dec12b0 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -32,7 +32,7 @@ import { continuationEvidence, type ContinuationEvidence } from "./continuation.
+ import { permissionBlockerKey } from "./shared-permission-blocker.js";
+ import { currentPermissionHold as readPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, permissionResolvedRecord, reportedPermissionBlockers, reportedPermissionGap, reportedPermissionResolutions, type PermissionHold } from "./permission-hold.js";
+ import { publishGoalGuidance } from "./prompt.js";
+-import { providerLimitResetMs } from "./provider-limit.js";
++import { isAuthFailureMessage, providerLimitResetMs } from "./provider-limit.js";
+ import { observeGoalStall } from "./stall.js";
+ import {
+   flattenObjectiveForRail,
+@@ -409,6 +409,8 @@ export default function (pi: ExtensionAPI): void {
+   let providerLimitStreak = 0;
+   /** Epoch ms before which a limited provider is known not to answer (from a reset hint); 0 when unknown. */
+   let providerLimitResetAt = 0;
++  /** The last run ended because the login was rejected; consumed when the run settles. */
++  let authFailurePending = false;
+   let preferences: GoalPreferences = { autoContinue: true, conversationalResume: true, pauseOnEscape: true, pauseOnAgentReportedPermission: true };
+   // Keep the audit trail. The opt-out only changes which reports can force a Goal hold.
+   const currentPermissionHold = (ctx: ExtensionContext, goalId: string): PermissionHold => {
+@@ -1557,7 +1559,9 @@ export default function (pi: ExtensionAPI): void {
+       const resetMs = providerLimitResetMs(lastAssistantError(event.messages));
+       if (resetMs !== undefined) providerLimitResetAt = Date.now() + resetMs;
+     }
+-    lastAgentEvidence = currentRun && !limited ? continuationEvidence(event.messages) : null;
++    // A rejected login produces no work either: hold the goal at settle instead of retrying.
++    authFailurePending = currentRun && isAuthFailureMessage(lastAssistantError(event.messages));
++    lastAgentEvidence = currentRun && !limited && !authFailurePending ? continuationEvidence(event.messages) : null;
+     // Only an observed editor Escape with pause disabled exempts this abort.
+     // Unknown interrupt sources retain the safety fallback on every host.
+     if (wasTurnAborted(event.messages) && !escapeAbortIsSuppressed()) {
+@@ -1684,6 +1688,22 @@ export default function (pi: ExtensionAPI): void {
+         return;
+       }
+     }
++    if (authFailurePending) {
++      authFailurePending = false;
++      const state = currentContinuationState(ctx, goal.goalId) ?? createContinuationState(goal.goalId);
++      appendContinuationState({
++        ...state,
++        lastEvidenceSummary: "authentication failed - re-login required",
++        blocked: true,
++        holdReason: "auth",
++        updatedAt: Math.floor(Date.now() / 1000),
++      });
++      refreshGoalWidget?.();
++      if (ctx.hasUI) {
++        ctx.ui.notify("Goal automatic continuation is held: the provider rejected the login. Log in again, then use /goal resume.", "warning");
++      }
++      return;
++    }
+     const evidence = lastAgentEvidence;
+     if (!evidence) {
+       scheduleIdleContinuation(goal, ctx, "continuation", snapshot);
+diff --git a/src/provider-limit.ts b/src/provider-limit.ts
+index ecde6b1..afc4027 100644
+--- a/src/provider-limit.ts
++++ b/src/provider-limit.ts
+@@ -11,3 +11,12 @@ export function providerLimitResetMs(message: unknown): number | undefined {
+   if (!Number.isFinite(value) || value <= 0) return undefined;
+   return value * (match[2]?.toLowerCase() === "h" ? 3_600_000 : 60_000);
+ }
++
++/**
++ * True when an error message reports that the login was rejected (a revoked or
++ * expired OAuth token, HTTP 401). Retrying cannot succeed until the user logs in again.
++ */
++export function isAuthFailureMessage(message: unknown): boolean {
++  return typeof message === "string" &&
++    /invalidated oauth token|token_revoked|\b401\b|unauthori[sz]ed|invalid[ _-]?api[ _-]?key|authentication (?:failed|error)|please (?:log ?in|sign ?in) again/i.test(message);
++}

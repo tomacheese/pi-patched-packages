@@ -1,18 +1,18 @@
 diff --git a/src/index.ts b/src/index.ts
-index 8c52f97..c1a7352 100644
+index 6b4d6b0..a289000 100644
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -28,7 +28,8 @@ import {
+@@ -29,7 +29,8 @@ import {
    type GoalEntrySource,
  } from "./goal-state.js";
  import { continuationEvidence, type ContinuationEvidence } from "./continuation.js";
 -import { currentPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, reportedPermissionBlockers, reportedPermissionGap, type PermissionHold } from "./permission-hold.js";
 +import { permissionBlockerKey } from "./shared-permission-blocker.js";
 +import { currentPermissionHold as readPermissionHold, logicalPermissionBlockerKey, MAX_PERMISSION_BLOCKERS, MAX_PERMISSION_RECORDS, permissionHoldRecord, permissionInstruction, permissionRecord, permissionResolvedRecord, reportedPermissionBlockers, reportedPermissionGap, reportedPermissionResolutions, type PermissionHold } from "./permission-hold.js";
+ import { publishGoalGuidance } from "./prompt.js";
  import { observeGoalStall } from "./stall.js";
  import {
-   flattenObjectiveForRail,
-@@ -117,7 +118,7 @@ const GOAL_ACTIONS: readonly AutocompleteItem[] = [
+@@ -127,7 +128,7 @@ const GOAL_ACTIONS: readonly AutocompleteItem[] = [
    { value: "settings", label: "settings", description: "Inspect or persist goal continuation, conversational resume, and Escape pause controls" },
  ];
  
@@ -21,7 +21,7 @@ index 8c52f97..c1a7352 100644
  
  export function goalArgumentCompletions(argumentPrefix: string): AutocompleteItem[] | null {
    const prefix = argumentPrefix.trimStart().toLowerCase();
-@@ -233,7 +234,7 @@ function formatGoal(
+@@ -243,7 +244,7 @@ function formatGoal(
    goal: GoalSnapshot | null,
    continuation: ReturnType<typeof currentContinuationState> = null,
    stall = observeGoalStall(goal, continuation),
@@ -30,7 +30,7 @@ index 8c52f97..c1a7352 100644
    permissions?: PermissionHold | null,
  ): string {
    const settings = formatPreferences(preferences);
-@@ -274,6 +275,7 @@ function formatPreferences(preferences: GoalPreferences): string {
+@@ -284,6 +285,7 @@ function formatPreferences(preferences: GoalPreferences): string {
      `Automatic continuation setting: ${preferences.autoContinue ? "on" : "off"}${WAKE_DISABLED ? " (disabled by environment)" : ""}`,
      `Conversational resume setting: ${preferences.conversationalResume ? "on" : "off"}`,
      `Pause on Esc setting: ${preferences.pauseOnEscape ? "on" : "off"}`,
@@ -38,7 +38,7 @@ index 8c52f97..c1a7352 100644
    ].join("\n");
  }
  
-@@ -326,7 +328,13 @@ export default function (pi: ExtensionAPI): void {
+@@ -340,7 +342,13 @@ export default function (pi: ExtensionAPI): void {
    let terminalInputIsEditor: (() => boolean) | undefined;
    let uiPromptDepth = 0;
    let lastAgentEvidence: ContinuationEvidence | null = null;
@@ -53,7 +53,7 @@ index 8c52f97..c1a7352 100644
    /** Background items active when each pending blocking question started, keyed by tool call id. */
    const pendingQuestions = new Map<string, Map<string, BackgroundWorkItem>>();
  
-@@ -496,7 +504,8 @@ export default function (pi: ExtensionAPI): void {
+@@ -531,7 +539,8 @@ export default function (pi: ExtensionAPI): void {
      }
      const goal = held ? current : goalWithStatus(current, "active");
      const permissions = currentPermissionHold(ctx, current.goalId);
@@ -63,7 +63,7 @@ index 8c52f97..c1a7352 100644
        return { ok: false, message: "Permission hold evidence is unavailable. The goal stays held; inspect the report before replacing this goal explicitly." };
      }
      if (permissions.blockers.length > 0) {
-@@ -916,13 +925,14 @@ export default function (pi: ExtensionAPI): void {
+@@ -971,13 +980,14 @@ export default function (pi: ExtensionAPI): void {
          const [, setting, mode, ...extra] = trimmed.split(/\s+/);
          if (setting !== undefined && (!GOAL_SETTINGS.includes(setting as typeof GOAL_SETTINGS[number]) ||
              (mode !== "on" && mode !== "off") || extra.length > 0)) {
@@ -80,7 +80,7 @@ index 8c52f97..c1a7352 100644
              await changePreference(ctx, key, mode === "on");
            } catch (error) {
              notifyGoal(ctx, error instanceof Error ? error.message : String(error), "error");
-@@ -1367,11 +1377,20 @@ export default function (pi: ExtensionAPI): void {
+@@ -1468,11 +1478,20 @@ export default function (pi: ExtensionAPI): void {
    pi.on("tool_result", (event, ctx) => {
      const goal = getGoal(ctx);
      if (!goal || (goal.status !== "active" && goal.status !== "paused")) return;
@@ -103,7 +103,7 @@ index 8c52f97..c1a7352 100644
      for (const blocker of reports) {
        const previous = hold.blockers.find((item) => logicalPermissionBlockerKey(item) === logicalPermissionBlockerKey(blocker));
        if (!hold.retryPending && previous && JSON.stringify(previous) === JSON.stringify(blocker)) continue;
-@@ -1393,6 +1412,14 @@ export default function (pi: ExtensionAPI): void {
+@@ -1494,6 +1513,14 @@ export default function (pi: ExtensionAPI): void {
      if (hold.retryPending && hold.recordCount < MAX_PERMISSION_RECORDS) {
        pi.appendEntry(EXTENSION_NAME, permissionRecord(goal.goalId, "permission-retry-finished"));
      }

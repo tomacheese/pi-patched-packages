@@ -1,8 +1,8 @@
 diff --git a/src/index.ts b/src/index.ts
-index c1a7352..5b9493e 100644
+index a289000..a75eff4 100644
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -1233,8 +1233,11 @@ export default function (pi: ExtensionAPI): void {
+@@ -1304,8 +1304,11 @@ export default function (pi: ExtensionAPI): void {
      const snapshot = await publishSnapshot(ctx);
      if (!snapshot) return;
      syncPollingState();
@@ -16,7 +16,7 @@ index c1a7352..5b9493e 100644
      }
    });
  
-@@ -1458,6 +1461,9 @@ export default function (pi: ExtensionAPI): void {
+@@ -1559,6 +1562,9 @@ export default function (pi: ExtensionAPI): void {
      escapeAbortSuppression = undefined;
      currentCtx = ctx;
      foregroundRunning = false;
