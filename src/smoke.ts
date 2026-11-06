@@ -154,6 +154,47 @@ async function checkPatchEffects(
   return effects.length
 }
 
+/**
+ * Guards the patched `pi-better-subagents` failure model: a bash failure
+ * summary must end with the output tail, and a failure repeated after a file
+ * edit must start a new group. Throws (non-zero child exit) when it does not.
+ * @param outDir Dist directory
+ */
+function checkIncidentModel(outDir: string): void {
+  const script = String.raw`
+    import { newIncidentModel, foldToolEnd } from ${JSON.stringify(
+      path.join(outDir, 'packages', 'pi-better-subagents', 'incident-model.ts')
+    )}
+    const events = []
+    const sink = {
+      observe: (batch) => { events.push(...batch); return { observations: {} } },
+      state: () => ({ observations: {} }),
+      dispose() {},
+    }
+    const model = newIncidentModel(false)
+    let n = 0
+    const fail = () => ({ toolCallId: 'b' + (++n), toolName: 'bash', isError: true,
+      args: { command: 'pytest -x tests/' },
+      result: { content: [{ type: 'text', text: '....F [100%]\n=== 1 failed, 5 passed ===\n\nCommand exited with code 1' }], details: { exitCode: 1 } } })
+    const edit = () => ({ toolCallId: 'e' + (++n), toolName: 'edit', isError: false, args: {}, result: { content: [{ type: 'text', text: 'ok' }] } })
+    foldToolEnd(model, fail(), '/w', 'ev', sink)
+    foldToolEnd(model, edit(), '/w', 'ev', sink)
+    foldToolEnd(model, fail(), '/w', 'ev', sink)
+    foldToolEnd(model, fail(), '/w', 'ev', sink)
+    const failures = events.filter((e) => e.kind === 'failure')
+    if (!failures[0].summary.includes('1 failed, 5 passed')) throw new Error('summary lost the output tail: ' + failures[0].summary)
+    if (failures[0].operation === failures[1].operation || failures[1].operation !== failures[2].operation) {
+      throw new Error('failures were not grouped per edit epoch')
+    }
+  `
+  execFileSync(
+    process.execPath,
+    ['--experimental-strip-types', '--input-type=module', '-e', script],
+    { stdio: 'inherit' }
+  )
+  console.log('incident model: ok')
+}
+
 /** Runs the smoke test. */
 async function main(): Promise<void> {
   const repoRoot = process.cwd()
@@ -200,6 +241,7 @@ async function main(): Promise<void> {
       }
       console.log(`command /${expected.command}: ${source}`)
     }
+    checkIncidentModel(outDir)
     const checked = await checkPatchEffects(repoRoot, outDir)
     console.log(`patch effects: ${String(checked)} file(s) verified`)
   } finally {
