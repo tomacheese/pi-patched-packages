@@ -47,7 +47,7 @@ CI: the shared `book000/templates` Node.js pnpm workflow (`.github/workflows/nod
 | `src/build-dist.ts` | Build logic: copy pinned packages, apply patches, generate `package.json` and `PATCHES.md` |
 | `src/build.ts` | CLI entry of `pnpm build` |
 | `src/smoke.ts` | Smoke test used by `verify.yml` and `release.yml` |
-| `src/release.ts` | Publishing logic: supersession guard, `dist` commit, atomic push of `dist` and `v0.<N>.0`, GitHub Release |
+| `src/release.ts` | Publishing logic: supersession guard, `dist` commit, atomic push of `dist` and `v<major>.<minor>.<patch>`, GitHub Release |
 | `src/release-cli.ts` | CLI entry of `pnpm release` (used by `release.yml`) |
 | `patches/<package>/` | Ordered patches (`NNNN-<slug>.patch`) |
 

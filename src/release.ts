@@ -1,5 +1,5 @@
 /**
- * Publishing of the `dist` branch, the `v0.<N>.0` tag and the GitHub Release.
+ * Publishing of the `dist` branch, the `v<major>.<minor>.<patch>` tag and the GitHub Release.
  *
  * Rules: a run publishes only when it is built from the current
  * head of `master`; `dist` is replaced by the full build output and only grows
@@ -56,38 +56,119 @@ export interface ReleaseOptions {
   release: ReleaseClient
 }
 
-/**
- * Computes the next release number from the existing tags.
- * @param tags All tag names
- * @returns Highest `v0.<number>.0` number plus one (1 when there is none)
- */
-export function nextReleaseNumber(tags: readonly string[]): number {
-  let highest = 0
-  for (const tag of tags) {
-    const match = /^v0\.(\d+)\.0$/.exec(tag)
-    if (match) highest = Math.max(highest, Number(match[1]))
-  }
-  return highest + 1
+/** Upstream version and patch file names of one package. */
+interface PackageState {
+  version: string
+  patches: string[]
 }
 
 /**
- * Formats the tag of a release number.
- * @param number_ Release number
- * @returns Tag name such as `v0.3.0`
+ * Parses the `upstream:` and `patch:` lines of `PATCHES.md`.
+ * @param markdown Content of `PATCHES.md`
+ * @returns Package name to its state
  */
-export function releaseTag(number_: number): string {
-  return `v0.${String(number_)}.0`
+export function parsePackageStates(
+  markdown: string
+): Map<string, PackageState> {
+  const result = new Map<string, PackageState>()
+  let current: PackageState | undefined
+  for (const line of markdown.split('\n')) {
+    const heading = /^## (.+)$/.exec(line)
+    if (heading) {
+      current = { version: '', patches: [] }
+      result.set(heading[1], current)
+      continue
+    }
+    const upstream = /^- upstream: (\S+)$/.exec(line)
+    if (upstream && current) current.version = upstream[1]
+    const patch = /^- patch: (\S+) sha256:/.exec(line)
+    if (patch && current) current.patches.push(patch[1])
+  }
+  return result
+}
+
+/**
+ * Computes the next version from the latest tag and the change in `PATCHES.md`.
+ *
+ * Breaking-level change (a major step from 1.0.0 on, a minor step in 0.x):
+ * an upstream major bump, or a package added or removed. Feature-level change
+ * (a minor step): an upstream minor bump, or a patch file added or removed.
+ * Everything else that changes the tree (upstream patch bump, patch content,
+ * tooling) is a patch step. From 0.x the breaking level maps to minor.
+ * @param tags All tag names
+ * @param previous `PATCHES.md` of the current `dist` head (undefined: none)
+ * @param next `PATCHES.md` of the new build
+ * @returns Next version without the `v` prefix
+ */
+export function nextVersion(
+  tags: readonly string[],
+  previous: string | undefined,
+  next: string
+): string {
+  let latest: [number, number, number] | undefined
+  for (const tag of tags) {
+    const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(tag)
+    if (!match) continue
+    const version: [number, number, number] = [
+      Number(match[1]),
+      Number(match[2]),
+      Number(match[3]),
+    ]
+    const newer =
+      !latest ||
+      version[0] > latest[0] ||
+      (version[0] === latest[0] &&
+        (version[1] > latest[1] ||
+          (version[1] === latest[1] && version[2] > latest[2])))
+    if (newer) latest = version
+  }
+  if (!latest || previous === undefined) return '0.1.0'
+
+  const before = parsePackageStates(previous)
+  const after = parsePackageStates(next)
+  const ranks = { patch: 0, minor: 1, major: 2 } as const
+  const levels = ['patch', 'minor', 'major'] as const
+  let rank = 0
+  const names = new Set([...before.keys(), ...after.keys()])
+  for (const name of names) {
+    const old = before.get(name)
+    const now = after.get(name)
+    if (!old || !now) {
+      rank = ranks.major
+      continue
+    }
+    const [oldMajor, oldMinor] = old.version.split('.').map(Number)
+    const [newMajor, newMinor] = now.version.split('.').map(Number)
+    let step: number = ranks.patch
+    if (oldMajor !== newMajor) step = ranks.major
+    else if (
+      oldMinor !== newMinor ||
+      old.patches.join('\n') !== now.patches.join('\n')
+    )
+      step = ranks.minor
+    rank = Math.max(rank, step)
+  }
+  const level = levels[rank]
+  const [major, minor, patch] = latest
+  if (major === 0) {
+    return level === 'patch'
+      ? `0.${String(minor)}.${String(patch + 1)}`
+      : `0.${String(minor + 1)}.0`
+  }
+  if (level === 'major') return `${String(major + 1)}.0.0`
+  if (level === 'minor') return `${String(major)}.${String(minor + 1)}.0`
+  return `${String(major)}.${String(minor)}.${String(patch + 1)}`
 }
 
 /**
  * Renders the release commit message.
- * @param number_ Release number
+ * @param tag Release tag
  * @param built Built packages
  * @param sourceSha Commit of `master` that was built
  * @returns Commit message
  */
 export function renderCommitMessage(
-  number_: number,
+  tag: string,
   built: readonly BuiltPackage[],
   sourceSha: string
 ): string {
@@ -98,7 +179,7 @@ export function renderCommitMessage(
         : 'no patches'
     return `${item.name.replace(/^pi-better-/, '')} ${item.version} (${patches})`
   })
-  return `release ${releaseTag(number_)}: ${parts.join(', ')}, source ${sourceSha}`
+  return `release ${tag}: ${parts.join(', ')}, source ${sourceSha}`
 }
 
 /**
@@ -238,16 +319,20 @@ export async function runRelease(
       const head = git(worktree, ['rev-parse', 'HEAD'])
       tag = git(repoRoot, ['tag', '--points-at', head])
         .split('\n')
-        .find((t) => /^v0\.\d+\.0$/.test(t))
+        .find((t) => /^v\d+\.\d+\.\d+$/.test(t))
       console.log('dist is up to date; no release commit')
       if (tag) ensureRelease(options, tag)
       return { kind: 'unchanged', tag }
     }
 
-    const number_ = nextReleaseNumber(
-      git(repoRoot, ['tag', '--list', 'v0.*']).split('\n')
+    const previousMd = hasDist
+      ? await fs.readFile(path.join(worktree, 'PATCHES.md'), 'utf8')
+      : undefined
+    const nextMd = await fs.readFile(
+      path.join(options.distDir, 'PATCHES.md'),
+      'utf8'
     )
-    tag = releaseTag(number_)
+    tag = `v${nextVersion(git(repoRoot, ['tag', '--list', 'v*']).split('\n'), previousMd, nextMd)}`
     const stale = await fs.readdir(worktree)
     for (const entry of stale) {
       if (entry !== '.git') {
@@ -264,7 +349,7 @@ export async function runRelease(
       'commit',
       '-q',
       '-m',
-      renderCommitMessage(number_, options.built, options.sourceSha),
+      renderCommitMessage(tag, options.built, options.sourceSha),
     ])
     git(worktree, [...BOT_IDENTITY, 'tag', tag])
     git(worktree, [
