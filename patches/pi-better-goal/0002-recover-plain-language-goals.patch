@@ -1,0 +1,28 @@
+diff --git a/src/index.ts b/src/index.ts
+index c1a7352..5b9493e 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1233,8 +1233,11 @@ export default function (pi: ExtensionAPI): void {
+     const snapshot = await publishSnapshot(ctx);
+     if (!snapshot) return;
+     syncPollingState();
+-    if (restoredGoal?.status === "active" && restoredGoal.command && boundCommandReady(restoredGoal, ctx) && !foregroundRunning && !snapshot.backgroundRunning) {
+-      scheduleIdleContinuation(restoredGoal, ctx, "continuation");
++    // Plain-language goals need recovery as much as command-bound goals.
++    // Re-read state: permission and legacy-command checks may have paused the restored goal.
++    const recoverableGoal = getGoal(ctx);
++    if (isPokeable(recoverableGoal) && boundCommandReady(recoverableGoal, ctx) && !foregroundRunning && !snapshot.backgroundRunning) {
++      scheduleIdleContinuation(recoverableGoal, ctx, "continuation");
+     }
+   });
+ 
+@@ -1458,6 +1461,9 @@ export default function (pi: ExtensionAPI): void {
+     escapeAbortSuppression = undefined;
+     currentCtx = ctx;
+     foregroundRunning = false;
++    // Follow-ups queued while streaming can be consumed inside the same run,
++    // without a second agent_start. Settling releases the dispatch latch.
++    continuationQueuedFor = null;
+     const snapshot = await publishSnapshot(ctx);
+     if (!snapshot) return;
+     const goal = getGoal(ctx);
