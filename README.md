@@ -19,13 +19,23 @@ Add one entry to `packages` in `~/.pi/agent/settings.json`, in place of the upst
 
 Update with `pi update --extensions`. Use the branch `dist` (not a tag): pi does not move packages pinned to a tag.
 
-The `dist` branch contains the generated tree (`packages/<name>/`, a root `package.json` listing every extension, `PATCHES.md`). It is never edited by hand. Every change of `dist` has a matching tag `r<N>` and GitHub Release.
+The `dist` branch contains the generated tree (`packages/<name>/`, a root `package.json` listing every extension, `PATCHES.md`). It is never edited by hand. Every change of `dist` has a matching tag `v<major>.<minor>.<patch>` and GitHub Release.
+
+## Versioning
+
+The version is derived from what changed in `PATCHES.md` since the previous release. While the major version is 0 (until the project is declared stable, which is done by tagging `v1.0.0` by hand), a "major" change is released as a minor bump.
+
+| Change | From 1.0.0 | In 0.x |
+|---|---|---|
+| Upstream major bump, or a package added/removed | major | minor |
+| Upstream minor bump, or a patch file added/removed | minor | minor |
+| Anything else that changes the tree (upstream patch bump, patch content) | patch | patch |
 
 ## How it works
 
 - `master` holds hand-written files only: `package.json` pins the upstream packages exactly, `patches/<package>/NNNN-<slug>.patch` holds the local changes as package-root-relative diffs.
 - Renovate bumps the pins. The `verify` workflow builds the tree (`pnpm build`) and smoke-tests it with the pinned pi CLI (`pnpm smoke`); a patch that no longer applies makes it fail, so the bump is not merged.
-- After a merge to `master`, `release.yml` rebuilds the tree and publishes it to `dist` and a new `r<N>` tag.
+- After a merge to `master`, `release.yml` rebuilds the tree and publishes it to `dist` and a new `v<major>.<minor>.<patch>` tag.
 
 ## Develop
 
