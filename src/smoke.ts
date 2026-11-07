@@ -302,7 +302,7 @@ async function checkCodexNativePatches(outDir: string): Promise<void> {
   const markers: [string, string[]][] = [
     ['stream-events.ts', ['describeTerminalLimit', '"token_revoked"']],
     ['diagnostic-failure.ts', ['token_revoked']],
-    ['transport-recovery.ts', ['Last error:']],
+    ['transport-recovery.ts', ['Last error:', 'prewarmLimitError']],
   ]
   for (const [file, needles] of markers) {
     const text = await fs.readFile(path.join(src, file), 'utf8')
@@ -323,7 +323,7 @@ async function checkCodexNativePatches(outDir: string): Promise<void> {
 async function checkLoopMonitorPatches(outDir: string): Promise<void> {
   const dist = path.join(outDir, 'packages', 'pi-loop-monitor', 'dist')
   const markers: [string, string[]][] = [
-    ['index.js', ['providerLimitedUntil']],
+    ['index.js', ['providerLimitedUntil', 'providerLimitFlushTimer']],
     ['tools/loop-tools.js', ['minimum: 0']],
     ['tools/monitor-tools.js', ['!params.onSignal']],
     ['runtime/notification-runtime.js', ['check current state before acting']],

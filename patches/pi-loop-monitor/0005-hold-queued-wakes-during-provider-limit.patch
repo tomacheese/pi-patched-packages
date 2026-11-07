@@ -1,0 +1,41 @@
+diff --git a/dist/index.js b/dist/index.js
+index 91f520c..86b90f9 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -102,10 +102,16 @@ export default function (pi) {
+         }
+         latestCtx?.ui.notify(`Read-only loop #${entry.id} was paused because pi-ask could not enforce its tool restrictions.`, "error");
+     }
++    // Provider limit stand-down state (see the agent_end handler below).
++    let providerLimitedUntil = 0;
++    let providerLimitStreak = 0;
++    let providerLimitFlushTimer;
+     const notificationRuntime = createNotificationRuntime({
+         pi,
+         getHasPendingMessages: () => latestCtx?.hasPendingMessages() ?? false,
+-        getIsIdle: () => latestCtx?.isIdle() ?? true,
++        // While limited, report "not idle" so every delivery path is requeued instead of producing a failing turn
++        // each; the flush timer below resumes delivery after the limit.
++        getIsIdle: () => (latestCtx?.isIdle() ?? true) && Date.now() >= providerLimitedUntil,
+         getMonitor: (monitorId) => monitorManager.get(monitorId),
+         getLoop: (loopId) => store.get(loopId),
+         onReadOnlyGuardUnavailable: (notification, reason) => {
+@@ -142,8 +148,6 @@ export default function (pi) {
+     // Provider limit stand-down: while the model provider reports a usage limit, recurring wakes cannot
+     // succeed. They are skipped (not counted as fires) until the reset time or an exponential backoff
+     // (5 min doubling to 1 h) has passed, instead of failing every 2 minutes for hours.
+-    let providerLimitedUntil = 0;
+-    let providerLimitStreak = 0;
+     pi.on("agent_end", (event) => {
+         const messages = Array.isArray(event?.messages) ? event.messages : [];
+         let last;
+@@ -166,6 +170,9 @@ export default function (pi) {
+         const hinted = hint ? Number.parseFloat(hint[1]) * (hint[2].toLowerCase() === "h" ? 3_600_000 : 60_000) : 0;
+         const backoff = Math.min(60 * 60_000, 5 * 60_000 * 2 ** Math.min(providerLimitStreak - 1, 10));
+         providerLimitedUntil = Date.now() + Math.min(Math.max(hinted, backoff), 12 * 3_600_000);
++        clearTimeout(providerLimitFlushTimer);
++        providerLimitFlushTimer = setTimeout(() => { void notificationRuntime.flushPendingNotifications().catch((error) => debug("provider-limit flush failed", error)); }, providerLimitedUntil - Date.now() + 1000);
++        providerLimitFlushTimer.unref?.();
+     });
+     function onLoopFire(entry, monitor, origin = monitor ? "monitor" : "dynamic") {
+         if (!isCurrentExtensionContext())
