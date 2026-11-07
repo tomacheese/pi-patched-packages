@@ -5,6 +5,7 @@
  * parser/classifier/registry/callback path against durable run metadata.
  */
 
+import { closeSync, openSync, readSync } from "node:fs";
 import { buildCompletionDelivery } from "./completion.ts";
 import { collectRunFailures, failurePath } from "./failures.ts";
 import { observeFailures } from "./shared-failure-observations.ts";
@@ -18,6 +19,7 @@ import {
     canExitFinalize,
     effectiveStatus,
     isFinalResultStatus,
+    logPathFor,
     readMeta,
     updateParkRecord,
     writeMeta,
@@ -25,6 +27,25 @@ import {
 } from "./registry.ts";
 import { fmtElapsed, fmtSpend } from "./widget.ts";
 import { evaluateParkDisposition, type ParkDisposition } from "./worker-waits.ts";
+
+/**
+ * First `Subagent child preflight failed: ...` line from the head of the child
+ * log. Preflight failures exit 1 before any event is emitted, so the cause is
+ * only in the raw stderr that shares the log file.
+ */
+function preflightFailure(id: string): string | undefined {
+    let fd: number | undefined;
+    try {
+        fd = openSync(logPathFor(id), "r");
+        const buf = Buffer.alloc(16_384);
+        const n = readSync(fd, buf, 0, buf.length, 0);
+        return /^Subagent child preflight failed: .*$/m.exec(buf.toString("utf8", 0, n))?.[0].replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 240);
+    } catch {
+        return undefined;
+    } finally {
+        if (fd !== undefined) closeSync(fd);
+    }
+}
 
 export interface FinalizeHooks {
     renderWidget?: () => void;
@@ -73,9 +94,10 @@ export function finalizeRun(
         })));
     }
     if (!completed) {
+        const preflight = code ? preflightFailure(id) : undefined;
         const summary = outcome.incomplete ? "Child exit evidence is incomplete"
             : outcome.diagnostics.modelError ? `Child exited with code ${code}: ${outcome.diagnostics.modelError}`
-            : `Child exited with code ${code}`;
+            : `Child exited with code ${code}${preflight ? `: ${preflight}` : ""}`;
         observeFailures(failurePath(id), [{ id: `exit:${code ?? "unknown"}:${outcome.classification}`,
             operation: "child-exit", kind: outcome.incomplete ? "incomplete" : "failure",
             category: "exit", summary }]);

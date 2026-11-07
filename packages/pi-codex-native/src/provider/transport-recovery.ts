@@ -24,6 +24,7 @@ import {
 	createErrorMessage,
 	isRetryableRequestStatus,
 	isRetryableStreamStatus,
+	isTerminalRateLimitError,
 	NonRetryableProviderError,
 	parseErrorResponse,
 } from "./errors.ts";
@@ -374,7 +375,11 @@ export function createCodexTransportStream<TApi extends Api>(
 			let streamStarted = false;
 			if (transport !== "sse") {
 				validateWebSocketTimeoutOptions(effectiveOptions);
-				if (deps.prewarm) {
+				// A terminal usage limit seen by the prewarm applies to the real request too: surface it through
+				// the normal failure path instead of uploading the same body a second time.
+				let prewarmLimitError: unknown;
+				// The server rejects a prewarm that carries a compaction trigger (HTTP 400), so skip it.
+				if (deps.prewarm && lane !== "compaction") {
 					try {
 						await deps.prewarm({
 							url: resolveCodexWebSocketUrl(model.baseUrl),
@@ -383,8 +388,11 @@ export function createCodexTransportStream<TApi extends Api>(
 							accountId,
 							options: effectiveOptions,
 						});
-					} catch {
-						// Prewarm is an optimization. The request still uses the normal retry path.
+					} catch (error) {
+						// Prewarm is an optimization: other failures fall through to the normal retry path.
+						// A terminal usage limit is recorded so the real request fails with it.
+						const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+						if (isTerminalRateLimitError(`${String(code ?? "")} ${String(message ?? "")}`)) prewarmLimitError = error;
 					}
 				}
 				for (let attempt = 0; attempt <= streamMaxRetries; attempt++) {
@@ -393,6 +401,7 @@ export function createCodexTransportStream<TApi extends Api>(
 					if (attempt > 0) output = createInitialAssistantMessage(model);
 					let websocketStarted = false;
 					try {
+						if (attempt === 0 && prewarmLimitError !== undefined) throw prewarmLimitError;
 						await processWebSocketStream(
 							resolveCodexWebSocketUrl(model.baseUrl),
 							withCodexTurnState(websocketBody, deps.turnState),
