@@ -1,0 +1,18 @@
+diff --git a/src/index.ts b/src/index.ts
+index 160de3f..4e98ab1 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -579,6 +579,13 @@ export default function piAutoContinue(pi: ExtensionAPI): void {
+ 			const waitMs = resetKnown
+ 				? Math.max(cappedResetWaitMs + AUTO_RESET_MARGIN_MS, autoResumeCount >= 2 ? backoffMs : 0)
+ 				: backoffMs;
++			// Keep an earlier, still-future wait that resumes no later than this one:
++			// re-arming would push the resume past the known reset.
++			const armed = scheduler.current;
++			if (armed && armed.targetTime.getTime() > Date.now() && armed.targetTime.getTime() <= Date.now() + waitMs) {
++				logDebug(`auto mode wait kept: armed wait resumes at ${armed.targetTime.toISOString()}, no later than new candidate ${formatRemainingTime(waitMs)}`);
++				return;
++			}
+ 			// Only an error that arrives after the previous wait ended is a failed retry;
+ 			// other limit errors during a wait must not inflate the counter.
+ 			if (Date.now() >= lastAutoWaitEndMs) autoResumeCount = Math.min(autoResumeCount + 1, 5);
