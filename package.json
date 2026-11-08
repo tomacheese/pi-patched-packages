@@ -28,7 +28,7 @@
     "release": "tsx ./src/release-cli.ts"
   },
   "devDependencies": {
-    "@book000/eslint-config": "1.16.116",
+    "@book000/eslint-config": "1.16.117",
     "@earendil-works/pi-coding-agent": "1.5.0",
     "@types/jest": "30.0.0",
     "@types/node": "26.6.6",
