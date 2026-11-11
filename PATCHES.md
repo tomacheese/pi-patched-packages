@@ -17,7 +17,7 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 
 ## pi-better-goal
 
-- upstream: 0.12.1
+- upstream: 0.12.2
 - patch: 0001-permission-hold-reported-failures.patch sha256:14a3cb7fd3c9d275c1e081adb4845122f55c3f853a5e16424fb9fa947bf6fa2e
 - patch: 0002-recover-plain-language-goals.patch sha256:1bbd4fd7b5e41cf940d0baec49b634161c3a4c253ff998e2ec1c91ed8f4f47f3
 - patch: 0003-usage-limit-not-no-progress.patch sha256:e468c6fd41acff5724f41537175dd1df22cb542a2a4cf8e1ee2729724abdacc0
@@ -30,7 +30,7 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 - patch: 0010-keep-text-only-turns-and-hold-semantics.patch sha256:c112114791d0249266000ff26f033087bad96156ca781750659e27042c836003
 - file: src/continuation.ts sha256:faee944ff470f05471ad734b5516ba34d2ee8110313a77d909b2f7fe0ae82ddc
 - file: src/goal-state.ts sha256:69d370797e3604f70846f423ccb47657ab5139758ec8d89c6ee874b3e15581ab
-- file: src/index.ts sha256:10ebeb673fe0e32036b2d760bb877f13447563ec24db13cb6ee3555037e96af2
+- file: src/index.ts sha256:80e1c3f12e442bf94e8b65f7f1daff644b7b36367b746842d9cd994178f9b55a
 - file: src/permission-hold.ts sha256:d9207f226edad7481731e65b5fbda6e20b559a08d7e0f1f00ccf209981bb02f0
 - file: src/preferences.ts sha256:b7db1e79d89613627b71a3cdbe22af5a07c260a973edafec32c340158b35dc5b
 - file: src/provider-limit.ts sha256:5d748fce2cde64c203f303f3b54a704d2548fa2090056a336351cf4c77dd1a03
