@@ -40,7 +40,7 @@
     "jest": "30.5.2",
     "jest-expect-message": "1.1.3",
     "pi-auto-continue": "0.4.1",
-    "pi-better-goal": "0.12.2",
+    "pi-better-goal": "0.12.3",
     "pi-better-subagents": "0.27.2",
     "pi-codex-native": "0.3.13",
     "pi-loop-monitor": "0.2.8",
