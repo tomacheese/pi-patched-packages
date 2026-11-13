@@ -29,7 +29,7 @@
   },
   "devDependencies": {
     "@book000/eslint-config": "1.16.122",
-    "@earendil-works/pi-coding-agent": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.1",
     "@types/jest": "30.0.0",
     "@types/node": "26.6.6",
     "eslint": "10.14.0",
