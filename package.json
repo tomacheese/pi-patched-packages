@@ -44,7 +44,7 @@
     "pi-better-subagents": "0.27.2",
     "pi-codex-native": "0.3.13",
     "pi-loop-monitor": "0.2.8",
-    "prettier": "3.9.10",
+    "prettier": "3.10.0",
     "run-z": "2.1.0",
     "ts-jest": "29.4.15",
     "tsx": "4.23.15",
