@@ -180,7 +180,7 @@ importers:
         version: 1.16.123(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
       '@earendil-works/pi-coding-agent':
         specifier: 1.5.2
-        version: 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
+        version: 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)
       '@types/jest':
         specifier: 30.0.0
         version: 30.0.0
@@ -210,19 +210,19 @@ importers:
         version: 1.1.3
       pi-auto-continue:
         specifier: 0.4.1
-        version: 0.4.1(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))
+        version: 0.4.1(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))
       pi-better-goal:
         specifier: 0.12.2
-        version: 0.12.2(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27)
+        version: 0.12.2(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27)
       pi-better-subagents:
         specifier: 0.27.2
-        version: 0.27.2(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2)
+        version: 0.27.2(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2)
       pi-codex-native:
         specifier: 0.3.13
-        version: 0.3.13(@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1))(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27)
+        version: 0.3.13(@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0))(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27)
       pi-loop-monitor:
         specifier: 0.2.8
-        version: 0.2.8(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27)
+        version: 0.2.8(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27)
       prettier:
         specifier: 3.10.1
         version: 3.10.1
@@ -254,76 +254,76 @@ packages:
     resolution: {integrity: sha512-IDl/lrPb90aH+pZFHGNDmgH9nAUQj5PlZH1sJ3w7RikctyjHSnY3oNjZhrLoaBoQn/rNK0zsP6OHEqEhj2tdLA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/core@3.980.1':
-    resolution: {integrity: sha512-W7jDWUPucezIUjFZpr8MudQQtz/m6yPMyAFrOyyQcHjuF4UrZdcCdP8eV1js06U9sH3dxp0AbhN+s9uHwQyXzQ==}
+  '@aws-sdk/core@3.981.0':
+    resolution: {integrity: sha512-Mnu7gaDrC5UCdyH8uLxLfB2eWbjE/HbjKX1U1J2VQxG3TTATUDObW2wU3I8iH3e9YH5NN2CY6w1mlAIe2XJ3jg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-env@3.972.82':
-    resolution: {integrity: sha512-sAfysgoFWKg/CJvufYM7lhvMUfJpTsuwjCLzp843Vtw8NlQh2PW9/+upUFrsoQK46pJcv3u1a+st7qJ4jfSODw==}
+  '@aws-sdk/credential-provider-env@3.972.84':
+    resolution: {integrity: sha512-akZJetiMVeLRHsKzYh3LamDCo74ZUCeo0XoyRKMEMZT5qP7ReM6LhpioBCyuqKP5Vav5gEOeCmaQV0VVQr1Meg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-http@3.972.84':
-    resolution: {integrity: sha512-6xFe7tGPZedfak01TLUxuExU2Xhqw0VtoVvcS/+1OLjPB8If5vulTpCaR0TKTA/J6sAhTOjZHb6+4R1e1KRMKg==}
+  '@aws-sdk/credential-provider-http@3.972.86':
+    resolution: {integrity: sha512-U4mHaDRPWAn63yhl7FXIzbppNmW1F+4dSLeuiUpej2v3Xb6rGwvayEJ8SdlrdMV+/mZtd+GStTEP2HqurEzXtw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-ini@3.973.27':
-    resolution: {integrity: sha512-geyao3+s46HIo8C0vyLz7cQ1qaOM1H6wrP/nNWTr5SoR4r97qlWrubi+a7Sg128KmvRZIFbwXTvkbKawBeysqg==}
+  '@aws-sdk/credential-provider-ini@3.973.30':
+    resolution: {integrity: sha512-r6r6499GWoGN943NA5YEhBEQ6TEOGTf7tTOBhHd/zw0UbNvSzd1/zPCNcDkPmRarA+e24X7KgxutqxjoWcskBg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-login@3.972.89':
-    resolution: {integrity: sha512-5kcIZkMMs6eYvU6psqZkmeWsS3EGES53S6xUJFCC6eoJak3BQCCaF8yLU1bN6LTAOr2a9RWw+m1XBGen7Jcq+Q==}
+  '@aws-sdk/credential-provider-login@3.972.92':
+    resolution: {integrity: sha512-96bcp9Pe/Xd60OEwncZ+kAQTQSu+fJnpUGz1qE6ghF5jnETmrk8XMU86mIP3lolvnCgR61XbZ+Ht6hdBjiQOmQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-node@3.972.94':
-    resolution: {integrity: sha512-qZzjRq45j0S0rI4XjHKGL63gGSFGPDYRe18Crp7l4Zk3Yr6PG4PjIixZEtsGIliOjtZ/h+ATExgjE54JQJeZMQ==}
+  '@aws-sdk/credential-provider-node@3.972.97':
+    resolution: {integrity: sha512-E4a0IXXJVsIdo/K9roX4JAEfI0JJr7KTPymkbKgETRDqEcLygE4ZlLTe24+7Qkh8Dl5YpnPd+Tt0DOPJDFXIwA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-process@3.972.82':
-    resolution: {integrity: sha512-VsFOXU7gYDWqYwRis7Rif3CrE+c7xMNxp0L3XqGPuvF6JO2K93FYjhLlEphW5uEMpHEXkOOutZ5USGErgfKaog==}
+  '@aws-sdk/credential-provider-process@3.972.84':
+    resolution: {integrity: sha512-199C6OpNejd0nq9GFAkEFIKids1FL0R6LJtL9c1OTiDOXki7S1OduuPxW4+hE0LwndcYJ7YHOuYTlqScfpCocA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-sso@3.973.26':
-    resolution: {integrity: sha512-IIrqv0iFNwO8Cd5EigbwILsnsvmprCAw5/BPfRvP/EiLQtBfv3PI9KpyUj2+qsJhYcpmKad+ugaS0+izle8OqQ==}
+  '@aws-sdk/credential-provider-sso@3.973.28':
+    resolution: {integrity: sha512-bGg7wH8wVDJQIcJggO9lg1ZYbG7l+PbLwHuM3Bi/e1TlCZhU712JS1W3tdRpyptdJD1UGyhBNGO/YrhrQCHKbg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/credential-provider-web-identity@3.972.88':
-    resolution: {integrity: sha512-RmeE04naP7gWzux9l1vqNQPzuo2OkH0Ca9WDtX5Zf4NERoBLeWZNU2g1ka7aJ4Fc9fqBxBLtGL89vYEfFP1LHw==}
+  '@aws-sdk/credential-provider-web-identity@3.972.90':
+    resolution: {integrity: sha512-duLeE3xlf0viHeH+1RM4z5duR3b32BCZTWVMu+MbxFPjQBxy7hmIGEqt5hekuFPRuXoyhMovjNl+PNNsb5oiGQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/eventstream-handler-node@3.972.40':
-    resolution: {integrity: sha512-LR2mRKFb9EMlGHmJNXMtuMPvVQqN1b9/v68A1UQaE72pb8pHqiHxTtS++vaab8844YesGVzBVrloAis7+EXq/w==}
+  '@aws-sdk/eventstream-handler-node@3.972.42':
+    resolution: {integrity: sha512-YVB1wrpE1WF8NvMpaRyhwm9XBYl3HTbPNEIgybi0b0XpmBrJ7Y3Y/drbxh9qAVMbR+0hcwM63GPWzhOVRuerfg==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-eventstream@3.972.36':
-    resolution: {integrity: sha512-OkV+alDzmJ3DOs2mRPLSM9FUVSul7G1wkpKrbO+tyxxGOT7qLMPZHOlj4Ipjw9OayRmU7nMVPSFo7hvUqOSeJg==}
+  '@aws-sdk/middleware-eventstream@3.972.38':
+    resolution: {integrity: sha512-4K6FDz2BxH3rve8Hw/8uApWXKCuKKMeYKzY23PoiGqUBWaA23eAy+GzW9aoG3Cm7HqgYzqkljl3ECJRJCxGs7g==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/middleware-websocket@3.972.64':
-    resolution: {integrity: sha512-qhsyjMHfYZ+G7ejfs/Sq5P/ZUCi9SPVN/UpgeYxWvVa3WVjuFXPHTSKSxgXhLuRAUUcamFYEVUM7iQ4EPqtyig==}
+  '@aws-sdk/middleware-websocket@3.972.66':
+    resolution: {integrity: sha512-feGNDB15ZgqX4DTsUykkgj7d8hzfzx03v80EIyRA1FTbsbAJQKxYB50kRbrrpE5WeFaWhgk+p5YHlsoyXrI2/g==}
     engines: {node: '>= 14.0.0'}
 
-  '@aws-sdk/nested-clients@3.998.1':
-    resolution: {integrity: sha512-KPw5W6LN3waUskfDCRXRcyBEHAev5PVlMOjMq74OIivFYbgPvq39QeFege7IOFPncO425/AQK0qxdfaoeGejYQ==}
+  '@aws-sdk/nested-clients@3.998.3':
+    resolution: {integrity: sha512-acHTTzMB13CU6dU4sxABYExMI3PQM2zStWH2MiUwJp/7QKTrLg2f7mbzSXoegW2kYOk2tdqQYagsZrWB8Xv7eA==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/signature-v4-multi-region@3.996.51':
-    resolution: {integrity: sha512-+aHvUugVBuMPXxgkPfWnTMyGdE/yWS8GHi5+qQ37HowS0YqzrbuaDLznj+Dtmtu5jgCdqz36gXmujOToUhNNWw==}
+  '@aws-sdk/signature-v4-multi-region@3.996.52':
+    resolution: {integrity: sha512-6W6SjGc8OXUhMzNxU1X922ghD+PP1XvzmCk5Scui0jaYsLezycMYR1RaLp5xTIOUrhTXyb4DnAbPr3fBgmdnzg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/token-providers@3.1127.0':
     resolution: {integrity: sha512-Dv2TMWBshJ+tF6ahs2Sy5bh4Iabsd4GAQqVvE9XZmYmnoaVbpS2QKIKE/HRacc7bTtbjEEvP+laGzHvHlf1CiQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/token-providers@3.1164.0':
-    resolution: {integrity: sha512-9LPRWfev5QZH1EnNn9O/Y++iCRpfxrJs4EIsJuOAKYZ0DY/kZ3aOx0qWzmN1OUOd8JlUk6Mjy1tJ8b7ul5tuVw==}
+  '@aws-sdk/token-providers@3.1166.0':
+    resolution: {integrity: sha512-ngJ8mxXqtQ9mnp7QV6TWKJCxkpjVfPWxKQSc2FYhCyCfOVFIGdFv7P+/RqVffFrJAorwBPpktnv32gNlcEgF4g==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/types@3.975.0':
-    resolution: {integrity: sha512-WQlhs6juByzWOzj5fwxOx0mPJaEqMcG/sDpl3Id61B3XhKE63xY+0QWcnG+sWR/sCfprmreyUo1lM7IKZmHMzw==}
+  '@aws-sdk/types@3.975.1':
+    resolution: {integrity: sha512-7rGxUkCB2QPoQOeJmonmAICTN2zrH+fpmi1p4Iwu72lnxNaMhOgqcbpyddifnM1DBb19TWQ1u6z/XjkaFNEDWw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/xml-builder@3.972.42':
-    resolution: {integrity: sha512-smX8/gNP8Kjq+CWTBMZQLQ912vOQjiWExzwzvMO+eujPB5RY8IbtF0AGdUUXHKN7KoDWK9dIcuW0WG269kiP6w==}
+  '@aws-sdk/xml-builder@3.972.43':
+    resolution: {integrity: sha512-rG8QVx4DOrJWptsogu1Aq+CDsnPKaBrAlJpKLxrJrIDXAq1ElnW0yQjjBnlWSXll0cDakCG6UDvaqwz0A9d9Og==}
     engines: {node: '>=20.0.0'}
 
   '@aws/lambda-invoke-store@0.3.0':
@@ -342,8 +342,8 @@ packages:
     resolution: {integrity: sha512-j1nvOQCZYSgp7HLmisnCXFTpVvFODiijQ9QHkORfGKWH6YDtskTEeCJS7eV545GZ9UBzrq0e2xsOd5QQ5PjIqw==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/generator@7.29.13':
-    resolution: {integrity: sha512-T5FRo+RzVHvGjWOuF1Ljc44b+NXAOazodHkGUHp4I3zCkQ4/sNVJm56h1S278LMR0bY5xBhztGziSbli8zObIw==}
+  '@babel/generator@7.29.14':
+    resolution: {integrity: sha512-qSY56jgW5JnSXzuekLVil6zaOQxOCtOHidr65KkaMBw772IuAY28Qx4ZykAcDn8+FRF15qk80XzKwgSc/RYW6g==}
     engines: {node: '>=6.9.0'}
 
   '@babel/helper-compilation-targets@7.29.13':
@@ -358,8 +358,8 @@ packages:
     resolution: {integrity: sha512-ejHwrQQYcm9xnTivShn2IDOlIzInN34AXskvq9QicvCtEzq1Vzclu/tKF8Jq1Cg8JG2GL6/EmjgsCT7lXepE3g==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/helper-module-transforms@7.29.13':
-    resolution: {integrity: sha512-/U96wOz+SCoZ7Da/8kjDGltcNY280JPQcRNPK0Hk3PTbdpaiBDQImtC6JsbVwb1HGMr3usZQU2WsWVjhYNmRzw==}
+  '@babel/helper-module-transforms@7.29.14':
+    resolution: {integrity: sha512-2XDvQVd9JESaOgGc4jT2/jquTAO7ppA5noTZQqH+MmZ89yjCzScLwtCPbWtkPZylL+TLWR49IwWmk+QkRR4GsA==}
     engines: {node: '>=6.9.0'}
     peerDependencies:
       '@babel/core': ^7.0.0
@@ -368,8 +368,8 @@ packages:
     resolution: {integrity: sha512-G7sHYigPY17oO5SYWnfD/0MTBwVR781S/JI643e/JhUYgVgWE/61SoW3NH9KWUKyKq5LVh3npif99Wkt6j86Jw==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/helper-string-parser@7.29.13':
-    resolution: {integrity: sha512-fWegr+WsEsiMVW4KUNdIIzzMTZSzNiqhy0//6+2MRi2d5NFNsL/AYwBQW8eBnRbTBVRnDVzjaJEUqKaCWjMMdQ==}
+  '@babel/helper-string-parser@7.29.14':
+    resolution: {integrity: sha512-CXvKMFvM80ihI7Vox9jb+kQjnyjESQNPM+vB7U0Zz6TWuZA+Z/FL0QPMH300h33qJtIx+REeBhXqWOPW48TcAQ==}
     engines: {node: '>=6.9.0'}
 
   '@babel/helper-validator-identifier@7.29.7':
@@ -380,12 +380,12 @@ packages:
     resolution: {integrity: sha512-N9ZErrD+yW5geCDtBqnOoxmR8+tNKiGuxKlDpuJxfsqpa2dFcexaziGAE/qoHLiDDreVNMupxGmSoNlyvsA3gw==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/helpers@7.29.13':
-    resolution: {integrity: sha512-laoRpD/kO/iA4CDlgJbixHekg7oPvWALK0PQyK3Ob2I2njZRvVAD77RfWCIImtqWCq6KijoBoZK7bp/HlTWASQ==}
+  '@babel/helpers@7.29.14':
+    resolution: {integrity: sha512-6E3Mi1r0B0umq6vmZa4/78q+64fqO2YY0THUdjDPKUCKhNb0yQy5NQIaPHCSD3ryTgiTss//P4JsWS80AsZ6LQ==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/parser@7.29.13':
-    resolution: {integrity: sha512-fJM50YYjlTiBhgdkGmC1tBpv+FMAyo4annf2X6Aks+0yRlaiVkYW/3f07xAfVVkYIoZ9fFZp+mEThUFnuybhkQ==}
+  '@babel/parser@7.29.14':
+    resolution: {integrity: sha512-VL220vXuyO2z3rNIQwY7ftj9UwpqOt+33sH+sBWkOekbsSR2g7EEMnOx24ZlCH0xOA3DM/33SifVFGbnJD8r/w==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -480,20 +480,20 @@ packages:
     peerDependencies:
       '@babel/core': ^7.0.0-0
 
-  '@babel/runtime@7.29.13':
-    resolution: {integrity: sha512-v+oN26xP4YIlQsbQ/CbTH1WG5m/l/DjKKZNy/Kp3f/AFvbgt7Em/D0FeMM3O2hX0YzeN2M16W8lOpyhIkfCBcQ==}
+  '@babel/runtime@7.29.14':
+    resolution: {integrity: sha512-Y5tqevQaUAZhhj82BpYMNC1ssvLQTVAfwKdm8iy8qwmhvC2/CpcAu8OC+QEtjM7pMk7knx83u1Qj8gzkicyelw==}
     engines: {node: '>=6.9.0'}
 
   '@babel/template@7.29.7':
     resolution: {integrity: sha512-puq+Gf35oI24FeN11LkoUQFqv9uwNeWpxXZi/Ji3rRIoKAzKnxRaZ+Gkj0vKS9ZCiTESfng1N9LyOyXvo+m+Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/traverse@7.29.13':
-    resolution: {integrity: sha512-0ve0xMlFA73dgY1oyJRY6RoW+/bncdcOQqg6jjYcVfXBK90OdLXjm9R6lmRetdZVrPjXkKIoMVBqYFPjcAlZ4Q==}
+  '@babel/traverse@7.29.14':
+    resolution: {integrity: sha512-RAdQJrBgmIH1FWvN0X+1hoDxzMzlP4cv/1Zi4dn4tG1H0cTb+rw7CzUxQJhp1f4ANd8j5vH3fy8BAWFGkBDEsA==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/types@7.29.11':
-    resolution: {integrity: sha512-WCsemW40Cpc6gouC1SrY6PBaZ+oLRlEVY9XBvZBI7il/HyUrb2nJ505wE1MHEFyDZNnrWDEuy4jL50WVHfTTSQ==}
+  '@babel/types@7.29.14':
+    resolution: {integrity: sha512-UjI/dKmwJwT9pOszJitq2G6EObZPnsZUfdCr92z2TlF3EZK9J3EdfOKUrCzHl6wFthbzwhzl1Soc/UIwxRiq6w==}
     engines: {node: '>=6.9.0'}
 
   '@bcoe/v8-coverage@0.2.3':
@@ -706,12 +706,12 @@ packages:
     peerDependencies:
       eslint: ^6.0.0 || ^7.0.0 || >=8.0.0
 
-  '@eslint-community/regexpp@4.12.2':
-    resolution: {integrity: sha512-EriSTlt5OC9/7SXkRSCAhfSxxoSUgBm33OH+IkwbdpgoqsSsUg7y3uh+IICI/Qg4BBWr3U2i39RpmycbxMq4ew==}
+  '@eslint-community/regexpp@4.12.3':
+    resolution: {integrity: sha512-R76UKbvsqI68DJJVTVyqFKqU98CN4+B+acxNfEA2IFarSzP0SjtKf/3+fFiXzTyv5Fj3PxLkGHe2wnVWWMxobQ==}
     engines: {node: ^12.0.0 || ^14.0.0 || >=16.0.0}
 
-  '@eslint/config-array@0.23.5':
-    resolution: {integrity: sha512-Y3kKLvC1dvTOT+oGlqNQ1XLqK6D1HU2YXPc52NmAlJZbMMWDzGYXMiPRJ8TYD39muD/OTjlZmNJ4ib7dvSrMBA==}
+  '@eslint/config-array@0.23.6':
+    resolution: {integrity: sha512-WrTH7nioI9QPY4NZGnsywmecswJdgeq4BCM76qok9VgjTO29ZgUzUvcuJLVPYVQM4uDbaPBU0M33R9DIxI8X3w==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
   '@eslint/config-helpers@0.7.0':
@@ -869,8 +869,8 @@ packages:
   '@jridgewell/remapping@2.3.5':
     resolution: {integrity: sha512-LI9u/+laYG4Ds1TDKSJW2YPrIlcVYOwi2fUC6xB43lueCjgxV4lffOCZCtYFiH6TNOX+tQKXx97T4IKHbhyHEQ==}
 
-  '@jridgewell/resolve-uri@3.1.2':
-    resolution: {integrity: sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw==}
+  '@jridgewell/resolve-uri@3.1.3':
+    resolution: {integrity: sha512-lhTtjtoEArWBjismtfS761S9Hlyn+nIZqOZVYoZ1Xn82PMNMVnk+jj/NhC4fAXGTs7ydONcJiR5vyQBTMDu27g==}
     engines: {node: '>=6.0.0'}
 
   '@jridgewell/sourcemap-codec@1.6.0':
@@ -1020,8 +1020,8 @@ packages:
   '@sinonjs/fake-timers@15.4.0':
     resolution: {integrity: sha512-DsG+8/LscQIQg68J6Ef3dv10u6nVyetYn923s3/sus5eaGfTo1of5WMZSLf0UJc9KDuKPilPH0UDJCjvNbDNCA==}
 
-  '@smithy/core@3.39.0':
-    resolution: {integrity: sha512-JJ/46AWQ4ipS1N2eZmUj7yzIhH8NhQIfAE+dce7NSB6dmFh+7hvD4pbofcoT4I0Xzfy/LNhZx3V2QhwYyAiqdg==}
+  '@smithy/core@3.40.0':
+    resolution: {integrity: sha512-DssGno52pzZ5m6RlDtyKuBIpZNPg9pqgs0CnNDKz9IatxCsmvNmJNn5Zn6rf77MthZo9wf89OvZFhTY/RwxhxQ==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/credential-provider-imds@4.5.2':
@@ -1324,8 +1324,8 @@ packages:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
     engines: {node: '>=8'}
 
-  ansi-regex@6.5.0:
-    resolution: {integrity: sha512-zhvbbbdt1kbw7EJ9OQoxmQcuaNR9P5kTj7e/YdmOSU10aHWbycofJxA6jKfoEy3vlLdctOF9ZHaxLtmSm998wQ==}
+  ansi-regex@6.6.0:
+    resolution: {integrity: sha512-XZ5apbzreCbXSKwPjJstu8R0zOi247w3XYwWxtwBXgpZrCyc1Ka7p9/xY0A9/diMewmHbEKz+FIraWaEWjlN5g==}
     engines: {node: '>=12'}
 
   ansi-styles@4.3.0:
@@ -1417,8 +1417,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  baseline-browser-mapping@2.11.35:
-    resolution: {integrity: sha512-GNk8KX52CHqeNKGk8+7tZnQab/2k1t/BgrUHPKNdijzpEhF1saPQZHVKb6m5loSAxB39gyrTYw34Qf9CQ3u1qQ==}
+  baseline-browser-mapping@2.11.37:
+    resolution: {integrity: sha512-QYph+vfurmaxhNwi9FprfmtkT5cx2Keg8FzZ0vnjO8ukscIybVyZGMFwdllKGlTI6qyU8ck43OM9UXh+IFJihQ==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -1428,14 +1428,18 @@ packages:
   bowser@2.15.0:
     resolution: {integrity: sha512-xic6KSZglg/I4ymp45fdM4GWfYpBK79Fxd/TOvJktlaPgQqqDxvmGwOPZl2V0dyeS3Lj5c180bLhXF43iyAjZQ==}
 
-  brace-expansion@1.1.21:
-    resolution: {integrity: sha512-9zeA+KLZNNzglF2TPKRQEDyx6Yby7daAkuy8MiPzpXPsYDWi/DRM8jmwUDxokQjYqBpv5DgPiwD4h4ZZSy1Ujw==}
+  brace-expansion@1.1.22:
+    resolution: {integrity: sha512-CKLDTuSsN0+r1ThM0WkzzBI7dnPI6xEGfa/JnVYIK9JNBA1N1NyPwXVHor//NKD/y3sDxp764sZdLhFK7pH8XQ==}
 
-  brace-expansion@2.1.7:
-    resolution: {integrity: sha512-uZbew1NqdmPDTMJ8ah1y+b+9QEJrfkXFk3RcTQw3X0jW/xRUvFKsg1CfQdSYGdTbXZWExtU3J3ccxtnfw1Fi0g==}
+  brace-expansion@2.1.8:
+    resolution: {integrity: sha512-BnlDzDYQoplTsZSvPi86CNzmbcb07X8ufR8fk1zivaiEJlXJkiq1MQyDCVmlWcsWbj6aWXqHnrwwevbrm/Saig==}
 
   brace-expansion@5.0.12:
     resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
+    engines: {node: 20 || >=22}
+
+  brace-expansion@5.0.13:
+    resolution: {integrity: sha512-Vh3dmFbc4wZeox7M9I/0L9GfFd83Su4+yCck/OF9Gi/P/dAHn0RT7X4K9R7gMNMhDck3DvhR6QXsnQdjjgwNvQ==}
     engines: {node: 20 || >=22}
 
   browserslist@4.29.5:
@@ -1484,8 +1488,8 @@ packages:
     resolution: {integrity: sha512-Gmy6FhYlCY7uOElZUSbxo2UCDH8owEk996gkbrpsgGtrJLM3J7jGxl9Ic7Qwwj4ivOE5AWZWRMecDdF7hqGjFA==}
     engines: {node: '>=10'}
 
-  caniuse-lite@1.0.30001823:
-    resolution: {integrity: sha512-TQ5s/djDjNk1axreUW+4rULH+BmdCMLiJkhaXnO5wqivG7tITkSUj4ItIdzqdZHKaXcHAV8dhH3JxOM7/7bwqw==}
+  caniuse-lite@1.0.30001826:
+    resolution: {integrity: sha512-wTB+9tIbLro/BCXwLuNV1meHE4L9dS6dArMDwgYfNBPMYScqClHyGunhkCSDtHhe/69Xl0sHlKgBVZ+fNsYtWA==}
 
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
@@ -1509,8 +1513,8 @@ packages:
   character-entities@2.0.2:
     resolution: {integrity: sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ==}
 
-  ci-info@4.4.0:
-    resolution: {integrity: sha512-77PSwercCZU2Fc4sX94eF8k8Pxte6JAwL4/ICZLFjJLqegs7kCuAsqqj/70NQF6TvDpgFjkubQB2FW2ZZddvQg==}
+  ci-info@4.5.0:
+    resolution: {integrity: sha512-d1uM8k5UZEyPza1n/MG3ko8nKupKN0KJpFsipgPcgaCCvV+IqIfJ+NzTjetlLM+UcXZx3+cLrNr76+eAO7G1Mw==}
     engines: {node: '>=8'}
 
   cjs-module-lexer@2.3.0:
@@ -1652,8 +1656,8 @@ packages:
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
 
-  electron-to-chromium@1.5.478:
-    resolution: {integrity: sha512-pftG+ma5Lm8O6/p45bhYT6StBN5ziQymaRzmCZwFl8DwWHKPPD93FdOmP1aqftcepolQYvrcyTLa17kE8Yf+jg==}
+  electron-to-chromium@1.5.485:
+    resolution: {integrity: sha512-m3uadzR0Z+sR19HGWgfxoZcKv9hE/edVM9OZ+FJ4wNRyfuFtkwZJIDoehEty5sisYVwmge8lKV1tenWOyClVgw==}
 
   emittery@0.13.1:
     resolution: {integrity: sha512-DeWwawk6r5yR9jFgnDKYt4sLS0LmHJJi3ZOnb5/JdbYwj3nW+FxQnHIjhBKz8YLC7oRNPVM9NQ47I3CVx34eqQ==}
@@ -1668,8 +1672,8 @@ packages:
   emoji-regex@9.2.2:
     resolution: {integrity: sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg==}
 
-  enhanced-resolve@5.26.1:
-    resolution: {integrity: sha512-PPnnSJq3azKOIewXR/uppBV/6h98dprBJ/WaQ9Qgj10xX1lJLNfg+XShpbsrSqcDSy2yYYyhfXM1wWhftqgyzw==}
+  enhanced-resolve@5.27.0:
+    resolution: {integrity: sha512-Do6BB2xzlcc/odFg+XEYyneAx4T/WfywO71yw9ePS2tVfRsf7JVR4mUeELadIeHzixkzbG5DpluiEFPi2WGfYQ==}
     engines: {node: '>=10.13.0'}
 
   entities@8.1.0:
@@ -2070,8 +2074,8 @@ packages:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
 
-  graceful-fs@4.2.11:
-    resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
+  graceful-fs@4.2.12:
+    resolution: {integrity: sha512-iuyGF2E4oafQfPsRrG2wtY2ILupMhvtdrhzrxB+0VcjsPpSPttpfYdjnGFGsTi5MaJFjI1jOKHPQ6UTbTj9TAw==}
 
   handlebars@4.7.10:
     resolution: {integrity: sha512-P5VJMVM7qgBn6vjXMw8WG9uVI+ncf2pi72j4de4yz5ZULLj2RGqLYaKOYGsgyrViQ0tePOVlN1tDCCXXtFqXKg==}
@@ -2656,6 +2660,10 @@ packages:
     resolution: {integrity: sha512-iny/40PEGkNJQ5/Pv6z3nm6FbRAby32GeZRjCUJk2WnNDbgPSTcdI+DDvLqsgBdD4cD5sMtMheqPPnehCCa8Nw==}
     engines: {node: 18 || 20 || >=22}
 
+  minimatch@11.0.8:
+    resolution: {integrity: sha512-nFQuYSTVrGvysVBps5Ih+0BdnYFN/Cj3C816r6+p7yK+FHrVLGE4O4N9AFwykrlNlvM2HYt+Rad1Uiro6h88Ig==}
+    engines: {node: 20 || >=22}
+
   minimatch@3.1.5:
     resolution: {integrity: sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w==}
 
@@ -2710,8 +2718,8 @@ packages:
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
 
-  node-releases@2.0.63:
-    resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
+  node-releases@2.0.64:
+    resolution: {integrity: sha512-zAPCKqMcnqs2nGy6nlkm7JduFseiBJy3EXHGLh+8pFR+TxGCBxxiEN21+UROU5CKwX/f4TlUcYjiM+vs/tsyxw==}
     engines: {node: '>=18'}
 
   normalize-path@3.0.0:
@@ -2829,8 +2837,8 @@ packages:
     resolution: {integrity: sha512-ayCKvm/phCGxOkYRSCM82iDwct8/EonSEgCSxWxD7ve6jHggsFl4fZVQBPRNgQoKiuV/odhFrGzQXZwbifC8Rg==}
     engines: {node: '>=8'}
 
-  parse5@8.1.0:
-    resolution: {integrity: sha512-sq3qBFpee5jeocbFbO48VHlGr8sT7mbXS0vxlKN6sottBtJzrOG3998sr0llSZcQAGgfpdmEYAIZE0P9z0dE8w==}
+  parse5@8.1.1:
+    resolution: {integrity: sha512-EcR/6WDcU7b2N3vQSxKALCk9lXGtUMQxXio008OEMBE0kavu/7JLfBEeFPzi43nMqVDSbEn3QCK+BMCc9zO//w==}
 
   partial-json@0.1.7:
     resolution: {integrity: sha512-Njv/59hHaokb/hRUjce3Hdv12wd60MtM9Z5Olmn+nehe0QDAsRtRbJPvJ0Z91TusF0SuZRIvnM+S4l6EIP8leA==}
@@ -3235,8 +3243,8 @@ packages:
     resolution: {integrity: sha512-eNRKgb3z66Yp3D2CixVujOUvXLFUTij/zVnV8KRyvFdQwpz7I5DS8UfRkTeLzb64u+dkzDSdelE24izu+zSSUg==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
-  tapable@2.3.3:
-    resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
+  tapable@2.3.4:
+    resolution: {integrity: sha512-NHFiWnAbMJxNNpBwiO7jJVGDuqMxT9/oV8v57RR+fgBQShkJil5inGD8/xWy0hjLyHQyX1tu27QANhlz3KBqCg==}
     engines: {node: '>=6'}
 
   test-exclude@7.0.2:
@@ -3429,8 +3437,8 @@ packages:
     resolution: {integrity: sha512-+QU2zd6OTD8XWIJCbffaiQeH9U73qIqafo1x6V1snCWYGJf6cVE0cDR4D8xRzcEnfI21IFrUPzPGtcPf8AC+Rw==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
 
-  ws@8.22.1:
-    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
+  ws@8.23.0:
+    resolution: {integrity: sha512-wCkmX8QMOrKjgO8HW2WyDbTSGeqkocxgDzS9iR79rEAexty6/2qzilx3Ag8Tqf9ykop3irLKle0MtVn5qjVnoQ==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -3487,180 +3495,180 @@ snapshots:
 
   '@aws-sdk/client-bedrock-runtime@3.1127.0':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/credential-provider-node': 3.972.94
-      '@aws-sdk/eventstream-handler-node': 3.972.40
-      '@aws-sdk/middleware-eventstream': 3.972.36
-      '@aws-sdk/middleware-websocket': 3.972.64
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/credential-provider-node': 3.972.97
+      '@aws-sdk/eventstream-handler-node': 3.972.42
+      '@aws-sdk/middleware-eventstream': 3.972.38
+      '@aws-sdk/middleware-websocket': 3.972.66
       '@aws-sdk/token-providers': 3.1127.0
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/fetch-http-handler': 5.8.1
       '@smithy/node-http-handler': 4.12.1
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/core@3.980.1':
+  '@aws-sdk/core@3.981.0':
     dependencies:
-      '@aws-sdk/types': 3.975.0
-      '@aws-sdk/xml-builder': 3.972.42
+      '@aws-sdk/types': 3.975.1
+      '@aws-sdk/xml-builder': 3.972.43
       '@aws/lambda-invoke-store': 0.3.0
-      '@smithy/core': 3.39.0
+      '@smithy/core': 3.40.0
       '@smithy/signature-v4': 5.7.5
       '@smithy/types': 4.20.0
       bowser: 2.15.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-env@3.972.82':
+  '@aws-sdk/credential-provider-env@3.972.84':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-http@3.972.84':
+  '@aws-sdk/credential-provider-http@3.972.86':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/fetch-http-handler': 5.8.1
       '@smithy/node-http-handler': 4.14.2
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-ini@3.973.27':
+  '@aws-sdk/credential-provider-ini@3.973.30':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/credential-provider-env': 3.972.82
-      '@aws-sdk/credential-provider-http': 3.972.84
-      '@aws-sdk/credential-provider-login': 3.972.89
-      '@aws-sdk/credential-provider-process': 3.972.82
-      '@aws-sdk/credential-provider-sso': 3.973.26
-      '@aws-sdk/credential-provider-web-identity': 3.972.88
-      '@aws-sdk/nested-clients': 3.998.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/credential-provider-env': 3.972.84
+      '@aws-sdk/credential-provider-http': 3.972.86
+      '@aws-sdk/credential-provider-login': 3.972.92
+      '@aws-sdk/credential-provider-process': 3.972.84
+      '@aws-sdk/credential-provider-sso': 3.973.28
+      '@aws-sdk/credential-provider-web-identity': 3.972.90
+      '@aws-sdk/nested-clients': 3.998.3
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/credential-provider-imds': 4.5.2
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-login@3.972.89':
+  '@aws-sdk/credential-provider-login@3.972.92':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/nested-clients': 3.998.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/nested-clients': 3.998.3
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-node@3.972.94':
+  '@aws-sdk/credential-provider-node@3.972.97':
     dependencies:
-      '@aws-sdk/credential-provider-env': 3.972.82
-      '@aws-sdk/credential-provider-http': 3.972.84
-      '@aws-sdk/credential-provider-ini': 3.973.27
-      '@aws-sdk/credential-provider-process': 3.972.82
-      '@aws-sdk/credential-provider-sso': 3.973.26
-      '@aws-sdk/credential-provider-web-identity': 3.972.88
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/credential-provider-env': 3.972.84
+      '@aws-sdk/credential-provider-http': 3.972.86
+      '@aws-sdk/credential-provider-ini': 3.973.30
+      '@aws-sdk/credential-provider-process': 3.972.84
+      '@aws-sdk/credential-provider-sso': 3.973.28
+      '@aws-sdk/credential-provider-web-identity': 3.972.90
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/credential-provider-imds': 4.5.2
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-process@3.972.82':
+  '@aws-sdk/credential-provider-process@3.972.84':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-sso@3.973.26':
+  '@aws-sdk/credential-provider-sso@3.973.28':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/nested-clients': 3.998.1
-      '@aws-sdk/token-providers': 3.1164.0
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/nested-clients': 3.998.3
+      '@aws-sdk/token-providers': 3.1166.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/credential-provider-web-identity@3.972.88':
+  '@aws-sdk/credential-provider-web-identity@3.972.90':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/nested-clients': 3.998.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/nested-clients': 3.998.3
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/eventstream-handler-node@3.972.40':
+  '@aws-sdk/eventstream-handler-node@3.972.42':
     dependencies:
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/middleware-eventstream@3.972.36':
+  '@aws-sdk/middleware-eventstream@3.972.38':
     dependencies:
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/middleware-websocket@3.972.64':
+  '@aws-sdk/middleware-websocket@3.972.66':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/fetch-http-handler': 5.8.1
       '@smithy/signature-v4': 5.7.5
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/nested-clients@3.998.1':
+  '@aws-sdk/nested-clients@3.998.3':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/signature-v4-multi-region': 3.996.51
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/signature-v4-multi-region': 3.996.52
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/fetch-http-handler': 5.8.1
       '@smithy/node-http-handler': 4.14.2
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/signature-v4-multi-region@3.996.51':
+  '@aws-sdk/signature-v4-multi-region@3.996.52':
     dependencies:
-      '@aws-sdk/types': 3.975.0
+      '@aws-sdk/types': 3.975.1
       '@smithy/signature-v4': 5.7.5
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
   '@aws-sdk/token-providers@3.1127.0':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/nested-clients': 3.998.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/nested-clients': 3.998.3
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/token-providers@3.1164.0':
+  '@aws-sdk/token-providers@3.1166.0':
     dependencies:
-      '@aws-sdk/core': 3.980.1
-      '@aws-sdk/nested-clients': 3.998.1
-      '@aws-sdk/types': 3.975.0
-      '@smithy/core': 3.39.0
+      '@aws-sdk/core': 3.981.0
+      '@aws-sdk/nested-clients': 3.998.3
+      '@aws-sdk/types': 3.975.1
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/types@3.975.0':
+  '@aws-sdk/types@3.975.1':
     dependencies:
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/xml-builder@3.972.42':
+  '@aws-sdk/xml-builder@3.972.43':
     dependencies:
       '@smithy/types': 4.20.0
       tslib: 2.9.1
@@ -3678,14 +3686,14 @@ snapshots:
   '@babel/core@7.29.13(supports-color@8.1.1)':
     dependencies:
       '@babel/code-frame': 7.29.7
-      '@babel/generator': 7.29.13
+      '@babel/generator': 7.29.14
       '@babel/helper-compilation-targets': 7.29.13
-      '@babel/helper-module-transforms': 7.29.13(@babel/core@7.29.13(supports-color@8.1.1))(supports-color@8.1.1)
-      '@babel/helpers': 7.29.13
-      '@babel/parser': 7.29.13
+      '@babel/helper-module-transforms': 7.29.14(@babel/core@7.29.13(supports-color@8.1.1))(supports-color@8.1.1)
+      '@babel/helpers': 7.29.14
+      '@babel/parser': 7.29.14
       '@babel/template': 7.29.7
-      '@babel/traverse': 7.29.13(supports-color@8.1.1)
-      '@babel/types': 7.29.11
+      '@babel/traverse': 7.29.14(supports-color@8.1.1)
+      '@babel/types': 7.29.14
       '@jridgewell/remapping': 2.3.5
       convert-source-map: 2.0.0
       debug: 4.4.3(supports-color@8.1.1)
@@ -3695,10 +3703,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/generator@7.29.13':
+  '@babel/generator@7.29.14':
     dependencies:
-      '@babel/parser': 7.29.13
-      '@babel/types': 7.29.11
+      '@babel/parser': 7.29.14
+      '@babel/types': 7.29.14
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
       jsesc: 3.1.0
@@ -3715,36 +3723,36 @@ snapshots:
 
   '@babel/helper-module-imports@7.29.7(supports-color@8.1.1)':
     dependencies:
-      '@babel/traverse': 7.29.13(supports-color@8.1.1)
-      '@babel/types': 7.29.11
+      '@babel/traverse': 7.29.14(supports-color@8.1.1)
+      '@babel/types': 7.29.14
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-module-transforms@7.29.13(@babel/core@7.29.13(supports-color@8.1.1))(supports-color@8.1.1)':
+  '@babel/helper-module-transforms@7.29.14(@babel/core@7.29.13(supports-color@8.1.1))(supports-color@8.1.1)':
     dependencies:
       '@babel/core': 7.29.13(supports-color@8.1.1)
       '@babel/helper-module-imports': 7.29.7(supports-color@8.1.1)
       '@babel/helper-validator-identifier': 7.29.7
-      '@babel/traverse': 7.29.13(supports-color@8.1.1)
+      '@babel/traverse': 7.29.14(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
   '@babel/helper-plugin-utils@7.29.7': {}
 
-  '@babel/helper-string-parser@7.29.13': {}
+  '@babel/helper-string-parser@7.29.14': {}
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
   '@babel/helper-validator-option@7.29.7': {}
 
-  '@babel/helpers@7.29.13':
+  '@babel/helpers@7.29.14':
     dependencies:
       '@babel/template': 7.29.7
-      '@babel/types': 7.29.11
+      '@babel/types': 7.29.14
 
-  '@babel/parser@7.29.13':
+  '@babel/parser@7.29.14':
     dependencies:
-      '@babel/types': 7.29.11
+      '@babel/types': 7.29.14
 
   '@babel/plugin-syntax-async-generators@7.8.4(@babel/core@7.29.13(supports-color@8.1.1))':
     dependencies:
@@ -3831,29 +3839,29 @@ snapshots:
       '@babel/core': 7.29.13(supports-color@8.1.1)
       '@babel/helper-plugin-utils': 7.29.7
 
-  '@babel/runtime@7.29.13': {}
+  '@babel/runtime@7.29.14': {}
 
   '@babel/template@7.29.7':
     dependencies:
       '@babel/code-frame': 7.29.7
-      '@babel/parser': 7.29.13
-      '@babel/types': 7.29.11
+      '@babel/parser': 7.29.14
+      '@babel/types': 7.29.14
 
-  '@babel/traverse@7.29.13(supports-color@8.1.1)':
+  '@babel/traverse@7.29.14(supports-color@8.1.1)':
     dependencies:
       '@babel/code-frame': 7.29.7
-      '@babel/generator': 7.29.13
+      '@babel/generator': 7.29.14
       '@babel/helper-globals': 7.29.7
-      '@babel/parser': 7.29.13
+      '@babel/parser': 7.29.14
       '@babel/template': 7.29.7
-      '@babel/types': 7.29.11
+      '@babel/types': 7.29.14
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/types@7.29.11':
+  '@babel/types@7.29.14':
     dependencies:
-      '@babel/helper-string-parser': 7.29.13
+      '@babel/helper-string-parser': 7.29.14
       '@babel/helper-validator-identifier': 7.29.7
 
   '@bcoe/v8-coverage@0.2.3': {}
@@ -3884,9 +3892,9 @@ snapshots:
       hashery: 1.5.1
       keyv: 5.6.0
 
-  '@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1)':
+  '@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.23.0)':
     dependencies:
-      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1)
+      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.23.0)
       '@earendil-works/pi-schema': 1.5.2
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
@@ -3901,9 +3909,9 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1)':
+  '@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0)':
     dependencies:
-      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1)
+      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0)
       '@earendil-works/pi-schema': 1.5.2
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
@@ -3918,7 +3926,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1)':
+  '@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.23.0)':
     dependencies:
       '@anthropic-ai/sdk': 0.129.0
       '@aws-sdk/client-bedrock-runtime': 3.1127.0
@@ -3928,7 +3936,7 @@ snapshots:
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0(supports-color@8.1.1)
       https-proxy-agent: 9.1.0(supports-color@8.1.1)
-      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.22.1)
+      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.23.0)
       partial-json: 0.1.7
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
@@ -3943,7 +3951,7 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1)':
+  '@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0)':
     dependencies:
       '@anthropic-ai/sdk': 0.129.0
       '@aws-sdk/client-bedrock-runtime': 3.1127.0
@@ -3953,7 +3961,7 @@ snapshots:
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0(supports-color@8.1.1)
       https-proxy-agent: 9.1.0(supports-color@8.1.1)
-      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(undici@8.12.4)(ws@8.22.1)
+      openai: 7.19.0(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.4)(ws@8.23.0)
       partial-json: 0.1.7
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
@@ -3972,10 +3980,10 @@ snapshots:
     dependencies:
       quickjs-wasi: 3.6.2
 
-  '@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)':
+  '@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)':
     dependencies:
-      '@earendil-works/pi-agent-core': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1)
-      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.22.1)
+      '@earendil-works/pi-agent-core': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.23.0)
+      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.3)(ws@8.23.0)
       '@earendil-works/pi-codemode': 1.5.2
       '@earendil-works/pi-mcp': 1.5.2
       '@earendil-works/pi-tui': 1.5.2
@@ -4105,13 +4113,13 @@ snapshots:
       eslint: 10.14.0(jiti@2.7.0)(supports-color@8.1.1)
       eslint-visitor-keys: 3.4.3
 
-  '@eslint-community/regexpp@4.12.2': {}
+  '@eslint-community/regexpp@4.12.3': {}
 
-  '@eslint/config-array@0.23.5(supports-color@8.1.1)':
+  '@eslint/config-array@0.23.6(supports-color@8.1.1)':
     dependencies:
       '@eslint/object-schema': 3.0.5
       debug: 4.4.3(supports-color@8.1.1)
-      minimatch: 10.2.6
+      minimatch: 11.0.8
     transitivePeerDependencies:
       - supports-color
 
@@ -4140,7 +4148,7 @@ snapshots:
       google-auth-library: 10.9.1(supports-color@8.1.1)
       p-retry: 4.6.2
       protobufjs: 7.6.6
-      ws: 8.22.1
+      ws: 8.23.0
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -4205,10 +4213,10 @@ snapshots:
       '@types/node': 26.6.6
       ansi-escapes: 4.3.2
       chalk: 4.1.2
-      ci-info: 4.4.0
+      ci-info: 4.5.0
       exit-x: 0.2.2
       fast-json-stable-stringify: 2.1.0
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-changed-files: 30.5.1
       jest-config: 30.5.2(@types/node@26.6.6)(supports-color@8.1.1)
       jest-haste-map: 30.5.1
@@ -4288,7 +4296,7 @@ snapshots:
       collect-v8-coverage: 1.0.3
       exit-x: 0.2.2
       glob: 13.0.7
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       istanbul-lib-coverage: 3.2.2
       istanbul-lib-instrument: 6.0.3(supports-color@8.1.1)
       istanbul-lib-report: 3.0.1
@@ -4311,7 +4319,7 @@ snapshots:
     dependencies:
       '@jest/types': 30.5.1
       chalk: 4.1.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       natural-compare: 1.4.0
 
   '@jest/source-map@30.5.2':
@@ -4319,7 +4327,7 @@ snapshots:
       '@jridgewell/trace-mapping': 0.3.31
       callsites: 3.1.0
       convert-source-map: 2.0.0
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
 
   '@jest/test-result@30.5.2':
     dependencies:
@@ -4331,7 +4339,7 @@ snapshots:
   '@jest/test-sequencer@30.5.2':
     dependencies:
       '@jest/test-result': 30.5.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-haste-map: 30.5.1
       slash: 3.0.0
 
@@ -4344,7 +4352,7 @@ snapshots:
       chalk: 4.1.2
       convert-source-map: 2.0.0
       fast-json-stable-stringify: 2.1.0
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-haste-map: 30.5.1
       jest-regex-util: 30.5.0
       jest-util: 30.5.1
@@ -4374,13 +4382,13 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@jridgewell/resolve-uri@3.1.2': {}
+  '@jridgewell/resolve-uri@3.1.3': {}
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
   '@jridgewell/trace-mapping@0.3.31':
     dependencies:
-      '@jridgewell/resolve-uri': 3.1.2
+      '@jridgewell/resolve-uri': 3.1.3
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@keyv/bigmap@1.3.1(keyv@5.6.0)':
@@ -4486,38 +4494,38 @@ snapshots:
     dependencies:
       '@sinonjs/commons': 3.0.1
 
-  '@smithy/core@3.39.0':
+  '@smithy/core@3.40.0':
     dependencies:
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
   '@smithy/credential-provider-imds@4.5.2':
     dependencies:
-      '@smithy/core': 3.39.0
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
   '@smithy/fetch-http-handler@5.8.1':
     dependencies:
-      '@smithy/core': 3.39.0
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
   '@smithy/node-http-handler@4.12.1':
     dependencies:
-      '@smithy/core': 3.39.0
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
   '@smithy/node-http-handler@4.14.2':
     dependencies:
-      '@smithy/core': 3.39.0
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
   '@smithy/signature-v4@5.7.5':
     dependencies:
-      '@smithy/core': 3.39.0
+      '@smithy/core': 3.40.0
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
@@ -4539,24 +4547,24 @@ snapshots:
 
   '@types/babel__core@7.20.5':
     dependencies:
-      '@babel/parser': 7.29.13
-      '@babel/types': 7.29.11
+      '@babel/parser': 7.29.14
+      '@babel/types': 7.29.14
       '@types/babel__generator': 7.27.0
       '@types/babel__template': 7.4.4
       '@types/babel__traverse': 7.28.0
 
   '@types/babel__generator@7.27.0':
     dependencies:
-      '@babel/types': 7.29.11
+      '@babel/types': 7.29.14
 
   '@types/babel__template@7.4.4':
     dependencies:
-      '@babel/parser': 7.29.13
-      '@babel/types': 7.29.11
+      '@babel/parser': 7.29.14
+      '@babel/types': 7.29.14
 
   '@types/babel__traverse@7.28.0':
     dependencies:
-      '@babel/types': 7.29.11
+      '@babel/types': 7.29.14
 
   '@types/debug@4.1.13':
     dependencies:
@@ -4603,7 +4611,7 @@ snapshots:
 
   '@typescript-eslint/eslint-plugin@8.72.2(@typescript-eslint/parser@8.72.2(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3))(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)':
     dependencies:
-      '@eslint-community/regexpp': 4.12.2
+      '@eslint-community/regexpp': 4.12.3
       '@typescript-eslint/parser': 8.72.2(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
       '@typescript-eslint/scope-manager': 8.72.2
       '@typescript-eslint/type-utils': 8.72.2(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@6.0.3)
@@ -4784,7 +4792,7 @@ snapshots:
 
   ansi-regex@5.0.1: {}
 
-  ansi-regex@6.5.0: {}
+  ansi-regex@6.6.0: {}
 
   ansi-styles@4.3.0:
     dependencies:
@@ -4869,7 +4877,7 @@ snapshots:
       babel-plugin-istanbul: 8.0.0(supports-color@8.1.1)
       babel-preset-jest: 30.5.0(@babel/core@7.29.13(supports-color@8.1.1))
       chalk: 4.1.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       slash: 3.0.0
     transitivePeerDependencies:
       - supports-color
@@ -4919,18 +4927,18 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  baseline-browser-mapping@2.11.35: {}
+  baseline-browser-mapping@2.11.37: {}
 
   bignumber.js@9.3.1: {}
 
   bowser@2.15.0: {}
 
-  brace-expansion@1.1.21:
+  brace-expansion@1.1.22:
     dependencies:
       balanced-match: 1.0.2
       concat-map: 0.0.1
 
-  brace-expansion@2.1.7:
+  brace-expansion@2.1.8:
     dependencies:
       balanced-match: 1.0.2
 
@@ -4938,12 +4946,16 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
+  brace-expansion@5.0.13:
+    dependencies:
+      balanced-match: 4.0.4
+
   browserslist@4.29.5:
     dependencies:
-      baseline-browser-mapping: 2.11.35
-      caniuse-lite: 1.0.30001823
-      electron-to-chromium: 1.5.478
-      node-releases: 2.0.63
+      baseline-browser-mapping: 2.11.37
+      caniuse-lite: 1.0.30001826
+      electron-to-chromium: 1.5.485
+      node-releases: 2.0.64
       update-browserslist-db: 1.3.4(browserslist@4.29.5)
 
   bs-logger@0.2.6:
@@ -4989,7 +5001,7 @@ snapshots:
 
   camelcase@6.3.0: {}
 
-  caniuse-lite@1.0.30001823: {}
+  caniuse-lite@1.0.30001826: {}
 
   chalk@4.1.2:
     dependencies:
@@ -5006,7 +5018,7 @@ snapshots:
 
   character-entities@2.0.2: {}
 
-  ci-info@4.4.0: {}
+  ci-info@4.5.0: {}
 
   cjs-module-lexer@2.3.0: {}
 
@@ -5131,7 +5143,7 @@ snapshots:
     dependencies:
       safe-buffer: 5.2.1
 
-  electron-to-chromium@1.5.478: {}
+  electron-to-chromium@1.5.485: {}
 
   emittery@0.13.1: {}
 
@@ -5141,10 +5153,10 @@ snapshots:
 
   emoji-regex@9.2.2: {}
 
-  enhanced-resolve@5.26.1:
+  enhanced-resolve@5.27.0:
     dependencies:
-      graceful-fs: 4.2.11
-      tapable: 2.3.3
+      graceful-fs: 4.2.12
+      tapable: 2.3.4
 
   entities@8.1.0: {}
 
@@ -5322,7 +5334,7 @@ snapshots:
   eslint-plugin-es-x@7.8.0(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1)):
     dependencies:
       '@eslint-community/eslint-utils': 4.10.1(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))
-      '@eslint-community/regexpp': 4.12.2
+      '@eslint-community/regexpp': 4.12.3
       eslint: 10.14.0(jiti@2.7.0)(supports-color@8.1.1)
       eslint-compat-utils: 0.5.1(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))
 
@@ -5358,7 +5370,7 @@ snapshots:
   eslint-plugin-n@18.5.0(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))(typescript@6.0.3):
     dependencies:
       '@eslint-community/eslint-utils': 4.10.1(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))
-      enhanced-resolve: 5.26.1
+      enhanced-resolve: 5.27.0
       eslint: 10.14.0(jiti@2.7.0)(supports-color@8.1.1)
       eslint-plugin-es-x: 7.8.0(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))
       get-tsconfig: 4.14.3
@@ -5381,7 +5393,7 @@ snapshots:
       '@eslint/css-tree': 4.1.2
       browserslist: 4.29.5
       change-case: 5.4.4
-      ci-info: 4.4.0
+      ci-info: 4.5.0
       core-js-compat: 3.51.0
       detect-indent: 7.0.2
       entities: 8.1.0
@@ -5392,7 +5404,7 @@ snapshots:
       indent-string: 5.0.0
       is-builtin-module: 5.0.0
       micromark: 4.0.3(supports-color@8.1.1)
-      parse5: 8.1.0
+      parse5: 8.1.1
       pluralize: 8.0.0
       quote-js-string: 0.1.0
       regjsparser: 0.13.4
@@ -5421,8 +5433,8 @@ snapshots:
   eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1):
     dependencies:
       '@eslint-community/eslint-utils': 4.10.1(eslint@10.14.0(jiti@2.7.0)(supports-color@8.1.1))
-      '@eslint-community/regexpp': 4.12.2
-      '@eslint/config-array': 0.23.5(supports-color@8.1.1)
+      '@eslint-community/regexpp': 4.12.3
+      '@eslint/config-array': 0.23.6(supports-color@8.1.1)
       '@eslint/config-helpers': 0.7.0
       '@eslint/core': 1.2.1
       '@eslint/plugin-kit': 0.7.3
@@ -5691,7 +5703,7 @@ snapshots:
 
   gopd@1.2.0: {}
 
-  graceful-fs@4.2.11: {}
+  graceful-fs@4.2.12: {}
 
   handlebars@4.7.10:
     dependencies:
@@ -5927,7 +5939,7 @@ snapshots:
   istanbul-lib-instrument@6.0.3(supports-color@8.1.1):
     dependencies:
       '@babel/core': 7.29.13(supports-color@8.1.1)
-      '@babel/parser': 7.29.13
+      '@babel/parser': 7.29.14
       '@istanbuljs/schema': 0.1.6
       istanbul-lib-coverage: 3.2.2
       semver: 7.8.6
@@ -6019,10 +6031,10 @@ snapshots:
       '@jest/types': 30.5.1
       babel-jest: 30.5.2(@babel/core@7.29.13(supports-color@8.1.1))(supports-color@8.1.1)
       chalk: 4.1.2
-      ci-info: 4.4.0
+      ci-info: 4.5.0
       deepmerge: 4.3.1
       glob: 13.0.7
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-circus: 30.5.2(supports-color@8.1.1)
       jest-docblock: 30.5.0
       jest-environment-node: 30.5.2
@@ -6081,7 +6093,7 @@ snapshots:
       anymatch: 3.1.3
       fb-watchman: 2.0.4
       fdir: 6.5.0(picomatch@4.0.7)
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-regex-util: 30.5.0
       jest-util: 30.5.1
       jest-worker: 30.5.1
@@ -6105,7 +6117,7 @@ snapshots:
       '@jest/types': 30.5.1
       '@types/stack-utils': 2.0.3
       chalk: 4.1.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-util: 30.5.1
       picomatch: 4.0.7
       pretty-format: 30.5.1
@@ -6131,7 +6143,7 @@ snapshots:
   jest-resolve@30.5.1:
     dependencies:
       chalk: 4.1.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-haste-map: 30.5.1
       jest-util: 30.5.1
       jest-validate: 30.5.1
@@ -6150,7 +6162,7 @@ snapshots:
       chalk: 4.1.2
       emittery: 0.13.1
       exit-x: 0.2.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-docblock: 30.5.0
       jest-environment-node: 30.5.2
       jest-haste-map: 30.5.1
@@ -6180,7 +6192,7 @@ snapshots:
       collect-v8-coverage: 1.0.3
       es-module-lexer: 2.3.2
       glob: 13.0.7
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-haste-map: 30.5.1
       jest-message-util: 30.5.1
       jest-mock: 30.5.2
@@ -6196,10 +6208,10 @@ snapshots:
   jest-snapshot@30.5.2(supports-color@8.1.1):
     dependencies:
       '@babel/core': 7.29.13(supports-color@8.1.1)
-      '@babel/generator': 7.29.13
+      '@babel/generator': 7.29.14
       '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@7.29.13(supports-color@8.1.1))
       '@babel/plugin-syntax-typescript': 7.29.7(@babel/core@7.29.13(supports-color@8.1.1))
-      '@babel/types': 7.29.11
+      '@babel/types': 7.29.14
       '@jest/expect-utils': 30.5.2
       '@jest/get-type': 30.5.0
       '@jest/snapshot-utils': 30.5.1
@@ -6208,7 +6220,7 @@ snapshots:
       babel-preset-current-node-syntax: 1.2.0(@babel/core@7.29.13(supports-color@8.1.1))
       chalk: 4.1.2
       expect: 30.5.2
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       jest-diff: 30.5.2
       jest-matcher-utils: 30.5.2
       jest-message-util: 30.5.1
@@ -6224,8 +6236,8 @@ snapshots:
       '@jest/types': 30.5.1
       '@types/node': 26.6.6
       chalk: 4.1.2
-      ci-info: 4.4.0
-      graceful-fs: 4.2.11
+      ci-info: 4.5.0
+      graceful-fs: 4.2.12
       picomatch: 4.0.7
 
   jest-validate@30.5.1:
@@ -6292,7 +6304,7 @@ snapshots:
 
   json-schema-to-ts@3.1.1:
     dependencies:
-      '@babel/runtime': 7.29.13
+      '@babel/runtime': 7.29.14
       ts-algebra: 2.0.0
 
   json-schema-traverse@0.4.1: {}
@@ -6514,20 +6526,25 @@ snapshots:
 
   minimatch@10.2.6:
     dependencies:
-      brace-expansion: 5.0.12
+      brace-expansion: 5.0.13
 
   minimatch@11.0.3:
     dependencies:
       '@isaacs/nonrecursive-glob-match': 1.1.0
       brace-expansion: 5.0.12
 
+  minimatch@11.0.8:
+    dependencies:
+      '@isaacs/nonrecursive-glob-match': 1.1.0
+      brace-expansion: 5.0.13
+
   minimatch@3.1.5:
     dependencies:
-      brace-expansion: 1.1.21
+      brace-expansion: 1.1.22
 
   minimatch@9.0.9:
     dependencies:
-      brace-expansion: 2.1.7
+      brace-expansion: 2.1.8
 
   minimist@1.2.8: {}
 
@@ -6576,7 +6593,7 @@ snapshots:
 
   node-int64@0.4.0: {}
 
-  node-releases@2.0.63: {}
+  node-releases@2.0.64: {}
 
   normalize-path@3.0.0: {}
 
@@ -6633,19 +6650,19 @@ snapshots:
     dependencies:
       mimic-fn: 2.1.0
 
-  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.22.1):
+  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.3)(ws@8.23.0):
     optionalDependencies:
-      '@aws-sdk/credential-provider-node': 3.972.94
+      '@aws-sdk/credential-provider-node': 3.972.97
       '@smithy/signature-v4': 5.7.5
       undici: 8.12.3
-      ws: 8.22.1
+      ws: 8.23.0
 
-  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(undici@8.12.4)(ws@8.22.1):
+  openai@7.19.0(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(undici@8.12.4)(ws@8.23.0):
     optionalDependencies:
-      '@aws-sdk/credential-provider-node': 3.972.94
+      '@aws-sdk/credential-provider-node': 3.972.97
       '@smithy/signature-v4': 5.7.5
       undici: 8.12.4
-      ws: 8.22.1
+      ws: 8.23.0
 
   optionator@0.9.4:
     dependencies:
@@ -6703,7 +6720,7 @@ snapshots:
       json-parse-even-better-errors: 2.3.1
       lines-and-columns: 1.2.4
 
-  parse5@8.1.0:
+  parse5@8.1.1:
     dependencies:
       entities: 9.0.0
 
@@ -6729,23 +6746,23 @@ snapshots:
 
   peowly@2.0.1: {}
 
-  pi-auto-continue@0.4.1(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)):
+  pi-auto-continue@0.4.1(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)):
     optionalDependencies:
-      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
+      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)
 
-  pi-better-goal@0.12.2(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27):
+  pi-better-goal@0.12.2(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27):
     dependencies:
       proper-lockfile: 4.1.2
       yaml: 2.9.1
     optionalDependencies:
-      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
+      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)
       '@earendil-works/pi-tui': 1.5.2
       typebox: 1.3.27
 
-  pi-better-subagents@0.27.2(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2):
+  pi-better-subagents@0.27.2(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2):
     dependencies:
-      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1)
-      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
+      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0)
+      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)
       '@earendil-works/pi-tui': 1.5.2
       proper-lockfile: 4.1.2
       shell-quote: 1.12.0
@@ -6753,20 +6770,20 @@ snapshots:
       tsx: 4.23.15
       yaml: 2.9.1
 
-  pi-codex-native@0.3.13(@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1))(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27):
+  pi-codex-native@0.3.13(@earendil-works/pi-agent-core@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0))(@earendil-works/pi-ai@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0))(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27):
     dependencies:
-      '@earendil-works/pi-agent-core': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1)
-      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.22.1)
-      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
+      '@earendil-works/pi-agent-core': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0)
+      '@earendil-works/pi-ai': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(undici@8.12.4)(ws@8.23.0)
+      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)
       '@earendil-works/pi-tui': 1.5.2
       partial-json: 0.1.7
       proxy-from-env: 2.1.0
       typebox: 1.3.27
       undici: 8.12.4
 
-  pi-loop-monitor@0.2.8(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27):
+  pi-loop-monitor@0.2.8(@earendil-works/pi-coding-agent@1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0))(@earendil-works/pi-tui@1.5.2)(typebox@1.3.27):
     dependencies:
-      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.94)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.22.1)
+      '@earendil-works/pi-coding-agent': 1.5.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@8.1.1)(ws@8.23.0)
       '@earendil-works/pi-tui': 1.5.2
       typebox: 1.3.27
 
@@ -6799,7 +6816,7 @@ snapshots:
 
   proper-lockfile@4.1.2:
     dependencies:
-      graceful-fs: 4.2.11
+      graceful-fs: 4.2.12
       retry: 0.12.0
       signal-exit: 3.0.7
 
@@ -7072,7 +7089,7 @@ snapshots:
 
   strip-ansi@7.2.0:
     dependencies:
-      ansi-regex: 6.5.0
+      ansi-regex: 6.6.0
 
   strip-bom@3.0.0: {}
 
@@ -7098,7 +7115,7 @@ snapshots:
     dependencies:
       '@pkgr/core': 0.3.6
 
-  tapable@2.3.3: {}
+  tapable@2.3.4: {}
 
   test-exclude@7.0.2:
     dependencies:
@@ -7340,7 +7357,7 @@ snapshots:
       imurmurhash: 0.1.4
       signal-exit: 4.1.0
 
-  ws@8.22.1: {}
+  ws@8.23.0: {}
 
   y18n@5.0.8: {}
 
