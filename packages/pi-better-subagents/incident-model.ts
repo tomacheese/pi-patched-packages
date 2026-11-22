@@ -292,21 +292,30 @@ function preRunRefusal(model: IncidentModel, attempt: Attempt | undefined, toolN
 /** Compact renders cap a summary at this many UTF-8 bytes; the output tail must survive that cap. */
 const BASH_SUMMARY_BYTES = 120;
 
+/** Mask credentials before selecting or truncating summary text. */
+function maskSummarySecrets(value: string): string {
+    return value
+        .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1…@")
+        .replace(/(--password(?:\s*=\s*|\s+))(?:"[^"]*"|'[^']*'|[^\s]+)/gi, "$1…")
+        .replace(/\b([A-Za-z_][A-Za-z0-9_]*=)(?:"[^"]*"|'[^']*'|[^\s]+)/g, "$1…")
+        .replace(/\b(Bearer|Basic)\s+\S+/gi, "$1 …");
+}
+
 /**
  * A bash failure summary that survives the compact render: exit code, command head and the output tail.
  * Test runners and linters print their verdict last, so the head (progress dots) says nothing.
- * Assignments and bearer tokens in the command head are masked: the summary is shown to other agents.
+ * Credentials in commands and output are masked before the summary is shown to other agents.
  */
 function bashFailureSummary(row: any, fallback: string): string {
     const text = row.result?.content?.find?.((x: any) => x?.type === "text")?.text;
-    if (typeof text !== "string") return fallback;
+    if (typeof text !== "string") return maskSummarySecrets(fallback).slice(0, 180);
     const clean = (value: string): string => value.replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").trim();
     const exited = /\n*Command exited with code (\d+)\s*$/.exec(text);
     const body = exited ? text.slice(0, exited.index) : text;
-    let tail = clean(body.split("\n").map(clean).filter(Boolean).at(-1) ?? "");
+    let tail = clean(maskSummarySecrets(body).split("\n").map(clean).filter(Boolean).at(-1) ?? "");
     const code = exited ? exited[1] : String(row.result?.details?.exitCode ?? "?");
     const command = typeof row.args?.command === "string"
-        ? clean(row.args.command).replace(/\b([A-Za-z_][A-Za-z0-9_]*=)\S+/g, "$1…").replace(/\b(Bearer|Basic)\s+\S+/gi, "$1 …").slice(0, 40)
+        ? clean(maskSummarySecrets(row.args.command)).slice(0, 40)
         : "";
     const head = `bash exit ${code}${command ? ` · ${command}` : ""}`;
     // Keep the end of the tail within the byte budget (multibyte text is wider than its length).
@@ -364,7 +373,7 @@ export function foldToolEnd(model: IncidentModel, row: any, cwd: string, evidenc
             ? { id: failureId, operation, kind: "failure", at: time(row), category: "tool", expected: true, evidence,
                 summary: `${toolName} exited with declared expected code ${declaredExit}` }
             : { id: failureId, operation: groupOperation, kind: "failure", at: time(row), category: "tool", evidence,
-                summary: toolName === "bash" ? bashFailureSummary(row, `${toolName} failed: ${error!.slice(0, 180)}`) : `${toolName} failed: ${error!.slice(0, 180)}`, expected: row.expected === true || row.result?.expected === true };
+                summary: toolName === "bash" ? bashFailureSummary(row, `${toolName} failed: ${error!}`) : `${toolName} failed: ${error!.slice(0, 180)}`, expected: row.expected === true || row.result?.expected === true };
         const state = sink.observe([event]);
         const incident = state.observations[failureIdentity(event.operation)]?.id ?? failureId;
         finished.incident = incident;

@@ -44,8 +44,9 @@ Upstream packages with the local patches applied (see `patches/` on `master`).
 - patch: 0003-readable-bash-failure-summary.patch sha256:85183521283c57b0ce03a7a80cb484b9b265fcb5401152cc71904ea79df09b8f
 - patch: 0004-count-fix-loop-failures-per-edit-epoch.patch sha256:1c2ee7e2302255f8ad29970583c17cce6bc9c43c57102d1569647f33b97c9e69
 - patch: 0005-preflight-failure-cause-in-exit-summary.patch sha256:004b38c34cc516a8076d71d937c615928e014fc6a17990daa7a1e2a7af0a02e6
+- patch: 0006-mask-bash-summary-secrets.patch sha256:a810c05ba3140fbbd9e0bf8030d59c548e21539fce8f58bbc62152d845f7a12b
 - file: finalization.ts sha256:c7ff2a7f72ee94dd8359758e435826749a1ed9b3da3fd31328a8a282a46cdd66
-- file: incident-model.ts sha256:b109fb3724fbd33c3957bc61b0842e36cc180d594000ba6b60ed1b4cea353981
+- file: incident-model.ts sha256:76a6605e41b4c59f0121e06588570a1f0a3e302a932f9fcd450861b4df71a44a
 - file: shared-failure-observations.ts sha256:695d4b6166edb6f68722556c860a10ad35980465d06f3bfd25cf0197d7d7b02c
 - file: task-policy.ts sha256:81ddadec0967289a8408da3d250ab4743bbb0de07304a41acaecee67241ed822
 - file: tools.ts sha256:2d98df1baec9f36a9ec3146638c7a631a1816395e83bc40b87f9af133083315d
