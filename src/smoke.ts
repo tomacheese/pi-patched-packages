@@ -179,6 +179,23 @@ function checkIncidentModel(outDir: string): void {
     const fail = () => ({ toolCallId: 'b' + (++n), toolName: 'bash', isError: true,
       args: { command: 'pytest -x tests/' },
       result: { content: [{ type: 'text', text: '....F [100%]\n=== 1 failed, 5 passed ===\n\nCommand exited with code 1' }], details: { exitCode: 1 } } })
+    const secretCases = [
+      ['curl --password FAKE_PASSWORD https://x', 'failure', 'FAKE_PASSWORD'],
+      ['echo test', 'API_KEY=SURVEY_FAKE_SECRET', 'SURVEY_FAKE_SECRET'],
+      ['curl https://user:FAKEPASS@host/x', 'failure', 'FAKEPASS'],
+      ['echo test', 'https://user:FAKEPASS@host/x', 'FAKEPASS'],
+      ['curl --password=FAKE_PASSWORD https://x', 'failure', 'FAKE_PASSWORD'],
+      ['echo test', 'Bearer FAKE_TOKEN', 'FAKE_TOKEN'],
+    ]
+    const leaked = []
+    for (const [command, output, secret] of secretCases) {
+      foldToolEnd(model, { toolCallId: 's' + (++n), toolName: 'bash', isError: true, args: { command },
+        result: { content: [{ type: 'text', text: output + '\nCommand exited with code 1' }], details: { exitCode: 1 } } }, '/w', 'ev', sink)
+      const summary = events.at(-1).summary
+      if (summary.includes(secret)) leaked.push(secret)
+    }
+    if (leaked.length) throw new Error('fake secrets leaked: ' + leaked.join(', '))
+    events.length = 0
     const edit = () => ({ toolCallId: 'e' + (++n), toolName: 'edit', isError: false, args: {}, result: { content: [{ type: 'text', text: 'ok' }] } })
     foldToolEnd(model, fail(), '/w', 'ev', sink)
     foldToolEnd(model, edit(), '/w', 'ev', sink)
